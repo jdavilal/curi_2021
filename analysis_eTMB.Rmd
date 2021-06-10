@@ -1,0 +1,359 @@
+---
+title: "Analysis of eTMB"
+output:
+  pdf_document: default
+  code_folding: default
+  html_document:
+    code_folding: hide
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading libraries
+
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+library(MutationalPatterns)
+library(NMF)
+library(reshape2)
+library(grid)
+library(gridExtra)
+```
+
+
+## Preliminary functions
+
+```{r}
+# Loads a mutational profile with columns sample, ext.context and num
+# Subsets such file to samples in sample.list and generates a matrix
+# with the mutational profile that can be used by MutationalPatterns
+load_mutational_matrix<- function(filename, sample.list) {
+
+  mutational.signature <-  read_tsv(filename)
+  order.tri <-  unique(mutational.signature$ext.context)
+  sample.names <-  unique(mutational.signature$sample)
+  
+  mutational.signature <-  mutational.signature %>%
+    mutate(ext.context = factor (ext.context, levels = order.tri)) %>%
+    filter(sample %in% sample.list) %>%
+    select(sample,ext.context,num) %>%
+    spread(sample,num) %>%
+    select(one_of("ext.context",sample.names))
+
+  mut.matrix <- as.matrix(sapply(mutational.signature[,2:ncol(mutational.signature)], as.numeric))  
+  rownames(mut.matrix) <-  mutational.signature$ext.context
+ 
+  # Add 1e-04 for use with NMF
+  mut.matrix <-  mut.matrix + 1e-04
+
+  return (mut.matrix)
+}
+
+load_old_mutational_matrix<- function(filename,mut.order="supplied_results/mut_sig.order.txt") {
+
+  mutational.signature = read_tsv(filename)
+  mut_mat = read_tsv(mut.order)
+
+  mut.join = mutational.signature %>%
+    inner_join(mut_mat)
+  
+  order.tri = unique(mut.join$ext.context)
+
+  mut.join = mut.join %>%
+    mutate(ext.context = factor (ext.context, levels = order.tri)) %>%
+    select(ext.context,prob)
+  
+  mut.matrix=as.matrix(sapply(mut.join[,2:ncol(mut.join)], as.numeric))  
+  rownames(mut.matrix) = mut.join$ext.context
+ 
+  return (t(mut.matrix)[,1:96])
+}
+
+
+# Loads the published COSMIC mutational signatures in a format that can be
+# used by MutationalPatterns
+load_cosmic_matrix<- function(mut.order="supplied_results/mut_sig.order.txt") {
+
+  sp_url <- paste("https://cancer.sanger.ac.uk/cancergenome/assets/",
+                "signatures_probabilities.txt", sep = "")
+   
+  cancer_signatures <-  read.table(sp_url, sep = "\t", header = TRUE)
+  # Match the order of the mutation types to MutationalPatterns standard
+  mut_mat <-  read_tsv(mut.order)
+  new_order <-  match(mut_mat$ext.context, cancer_signatures$Somatic.Mutation.Type) 
+  # Reorder cancer signatures dataframe
+  cancer_signatures <-  cancer_signatures[as.vector(new_order),]
+  # Add trinucletiode changes names as row.names
+  row.names(cancer_signatures) <-  cancer_signatures$Somatic.Mutation.Type
+  # Keep only 96 contributions of the signatures in matrix
+  cancer_signatures <-  as.matrix(cancer_signatures[,4:33])
+  return(cancer_signatures)
+}
+                              
+
+# Returns a frame with columns Signature, Sample, Contribution with the absolute
+# contribution of each signature for each sample
+calc_abs_contribution <- function(nmf.res) {
+
+  total_signatures <-  colSums(nmf.res$signatures) 
+  abs_contribution <-  nmf.res$contribution * total_signatures
+  rownames(abs_contribution) <- sig.names
+
+  m_contribution <-  melt(abs_contribution)
+  colnames(m_contribution) <-  c("Signature", "Sample", "Contribution")
+
+  return (m_contribution)
+}
+
+# Returns a frames with the cosine similarity (fit) between the original profile and the
+# reconstructed profile
+calc_fit_contribution <- function(mut.matrix,nmf.res) {
+
+  # calculate all pairwise cosine similarities
+  cos.sim.all <- cos_sim_matrix(mut.matrix, nmf.res$reconstructed)
+  # extract cosine similarities per sample between original and reconstructed
+  fit.table<- as.data.frame(diag(cos_sim_ori_rec))
+  fit.table$Sample <-  rownames(fit.table)
+  colnames(fit.table) <-  c("fit","sample")
+
+  return(fit.table)
+}
+
+# Returns with the total mutations per case after removing the FFPE component
+remove_ffpe_contribution <- function(contribution) {
+
+  norm.contribution <-  contribution %>%
+    filter(Signature != "FFPE") %>%
+    group_by(Sample) %>%
+    summarize(norm.mut=sum(Contribution))
+
+  return (norm.contribution)
+}
+
+calc_mmr_contribution <- function(contribution) {
+
+  norm.contribution <-  contribution %>%
+    filter(Signature == "MMR") %>%
+    group_by(Sample) %>%
+    summarize(mmr.mut=sum(Contribution))
+
+  return (norm.contribution)
+}
+
+# Summarize cohort according to mmr.status, sex, tissue and tissue of origin
+summarize_cohort <-function(mmr.table) {
+
+  summary.age <-  mmr.table %>%
+    group_by(mmr.type) %>%
+      summarize(n=n(),
+            avg.age=mean(Age.DX,na.rm=TRUE),std.age=sd(Age.DX,na.rm=TRUE),
+            min.age=min(Age.DX,na.rm=TRUE),max.age=max(Age.DX,na.rm=TRUE))
+  
+  summary.sex <- 
+    mmr.table %>%
+      group_by(mmr.type,Sex) %>%
+      summarize (n=n()) %>%
+      spread (Sex,n)
+
+  summary.tissue <-  
+    mmr.table %>%
+    group_by(mmr.type,Tissue) %>%
+    summarize (n=n()) %>%
+    spread(Tissue,n)
+
+  summary <-  summary.age %>%
+    inner_join(summary.sex) %>%
+    inner_join(summary.tissue)
+
+  return(summary)
+}
+
+```
+
+
+## Sample filtering
+
+We exclude samples that meet the following criteria:
+
+ * Their sequencing had less than 10 million reads.
+ * Samples from our pilot with incomplete information.
+ * Have no corresponding normal tissue (only tumor).
+ * Samples with unknown tissue type.
+ * Samples with wrong MSI/MSS phenotype. 
+ * Samples that did not meet age criteria.
+ * Samples from ovarian cancer or small bowel cancer.
+ 
+ 
+```{r message=FALSE}
+mapping.stats <- read_tsv("supplied_results/master_statistics_table.txt") %>%
+  select(sample.name,tumor.status,stat.Total_Reads)
+
+samples.pilot <-  c("MSI_MLH1p_1")
+samples.na.tissue <-  c("MSI_MLH1G_2","MSI_MLH1G_6","MSI_MSH2_11","MSS_1")
+samples.exclude.age <-  c("MSI_MLH1HM_14")
+samples.wrong.phenotype <-  c("MSI_MLH1G_9")
+samples.small.bowel <- c("MSI_PMS2_12","MSS_9")
+
+min.reads <- 1e7 #minimum number of reads
+
+mapping.info.filter <-  mapping.stats %>%
+  spread(tumor.status,stat.Total_Reads) %>%
+  filter(!is.na(normal)) %>%
+  filter(normal>min.reads & tumor>min.reads) %>%
+  filter(!sample.name %in% samples.pilot) %>%
+  filter(!sample.name %in% samples.na.tissue) %>%
+  filter(!sample.name %in% samples.exclude.age) %>%
+  filter(!sample.name %in% samples.wrong.phenotype) %>%
+  filter(!sample.name %in% samples.small.bowel) 	
+
+```
+ 
+## Initial NMF analysis
+
+We start the analysis by loading the mutational profiles from the samples that made it into `mapping.info.filter`
+
+```{r warning=FALSE, message=FALSE}
+mut.matrix <-  load_mutational_matrix("supplied_results/signatures.txt",
+  mapping.info.filter$sample.name)
+```
+
+And we apply non-negative matrix factorization
+
+```{r}
+nmf.res <- extract_signatures(mut.matrix, rank = 4, nrun = 10)
+```
+
+And plot the 4 signatures that we found in the processes side
+
+```{r}
+plot_96_profile(nmf.res$signatures, condensed = TRUE)
+```
+
+To infer what process corresponds to what signature, we load the COSMIC v2 mutational signatures and compare them against our signatures
+
+```{r message=FALSE}
+# Plot COSMIC v2 according to their similarity to each other
+cosmic.signatures <- load_cosmic_matrix()
+hclust_cosmic <-  cluster_signatures(cosmic.signatures,
+                                   method = "average")
+cosmic_order <-  colnames(cosmic.signatures)[hclust_cosmic$order]
+plot(hclust_cosmic)
+
+# Do a heatmap showing similarity between COSMIC v2 and our signatures
+colnames(nmf.res$signatures) <- seq (1:4)
+cos_sim_samples_signatures <-  cos_sim_matrix(nmf.res$signatures, cosmic.signatures)
+plot_cosine_heatmap(cos_sim_samples_signatures,
+                    col_order = cosmic_order,
+                    cluster_rows = FALSE)
+```
+
+From the figure we get that:
+
+ * Our first signature corresponds to COSMIC signature 10 with a cosine similarity of `r round(cos_sim(cosmic.signatures[,10],nmf.res$signatures[,1]),2)`
+ 
+ * The second signature corresponds to COSMIC signature 5 with a cosine similarity of `r round(cos_sim(cosmic.signatures[,5],nmf.res$signatures[,2]),2)`
+ 
+ * The third signature has a high similarity with COSMIC signature 30 with a cosine similarity of `r round(cos_sim(cosmic.signatures[,30],nmf.res$signatures[,3]),2)`. We will come to that later on.
+ 
+* The fourth signature corresponds to COSMIC signature 6 with a cosine similarity of `r round(cos_sim(cosmic.signatures[,6],nmf.res$signatures[,4]),2)`
+ 
+
+On further inspection we compare our third signature against a previously identified FFPE signature
+
+```{r warning=FALSE, message=FALSE}
+ffpe.aditya <-  load_old_mutational_matrix("supplied_results/signatures/ffpe.aditya.txt")
+```
+
+And we obtain that it has a cosine similarity of `r round(cos_sim(ffpe.aditya,nmf.res$signatures[,3]),2)` against this signature. 
+
+Given this information we label each of our resulting signatures:
+
+```{r}
+sig.names <-  c("PolE","Aging","FFPE","MMR")
+colnames(nmf.res$signatures) <- sig.names
+rownames(nmf.res$contribution) <- sig.names
+
+sig.order <-  c("MMR","Aging","PolE","FFPE")
+inferred.signatures =nmf.res$signatures[,sig.order]
+```
+
+## Plotting samples with high TMB
+
+It seems samples with unusually high TMB have similar mutational profiles. Let's plot the top-6 highest mutated samples in a single graph
+
+```{r message=FALSE, warning=FALSE}
+# Get tmb for each sample that was used for mutational analysis
+burden.table <-  read_tsv("supplied_results/burden.final.txt") %>%
+    mutate(burden = (somatic_snvs/tumor_doc_50X) * 1e6) %>%
+    filter(sample %in% colnames(nmf.res$contribution))
+
+# Format sample name to remove MSI prefix
+sample.names <-  colnames(nmf.res$contribution) %>%
+  str_replace('MSI_','') %>%
+  str_replace('MSH6p','MSH6')
+
+# Table with tmb info and short name as a factor sorted by tmb (desc)
+burden.table <-  burden.table %>%
+    mutate(short.sample = str_replace(sample,"MSI_","")) %>%
+    mutate(short.sample = str_replace(short.sample,"MSH6p","MSH6")) %>%
+    mutate(short.sample = factor(short.sample,levels=rev(sample.names))) %>%
+    arrange(desc(burden))
+
+# Samples sorted by tmb in descending order
+pch1 <- burden.table %>%
+  ggplot(aes(x=reorder(short.sample,burden),y=burden,fill=type))+
+  geom_bar(stat="identity")+
+  coord_flip()+
+  ylab("Tumor mutational burden")+
+  xlab("Sample")
+
+high.burden.samples <-  burden.table %>%
+  head(n=6) %>%
+  select(sample)
+
+mut.high = load_mutational_matrix("supplied_results/signatures.txt",
+  high.burden.samples$sample)
+
+pch2 <- plot_96_profile(mut.high[], condensed = TRUE)
+
+supp.1.grob = grid.arrange(pch1,pch2, ncol=2)
+
+supp.1.grob
+#ggsave(file="figures/supp.1.png",
+       #supp.1.grob, width=12, height=7, units="in", dpi=300)
+
+```
+
+## Plotting the NMF analysis
+
+```{r}
+pch1 <- plot_96_profile(inferred.signatures, condensed = TRUE)
+
+# Get absolute contribution for each signature x sample
+sig.abs.contribution = calc_abs_contribution (nmf.res)
+
+# Calculate absolute tmb and pct tmb for each sample x signature 
+sample.sig.table = sig.abs.contribution %>%
+    inner_join(burden.table, by=c("Sample"="sample")) %>%
+    mutate(burden.contribution = Contribution/tumor_doc_50X * 1e6,
+           burden.pct = burden.contribution/burden,
+           Signature = factor(Signature,levels=sig.order))
+          
+# Plot absolute tmb contribution for each sample x signature in waterfall diagram
+pch2 <- ggplot(sample.sig.table,
+               aes (x=reorder(short.sample,burden),
+                    y=burden.contribution,fill=Signature))+
+  geom_bar(stat="identity")+
+  coord_flip()+
+  ylab("Tumor mutational burden")+
+  xlab("Sample")+
+  theme(legend.position="none")
+
+fig.1.grob = grid.arrange(pch1,pch2, ncol=2)
+fig.1.grob
+```
+
