@@ -1,0 +1,68 @@
+---
+title: "Bayes Question"
+author: "Audrey Mitchell"
+date: "6/7/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(MutationalPatterns)
+library(BSgenome)
+library(BiocManager)
+install("BSgenome.Hsapiens.UCSC.hg19")
+ref_genome <- "BSgenome.Hsapiens.UCSC.hg19"
+library(ref_genome, character.only = TRUE)
+vcf_files <- list.files(system.file("extdata", package="MutationalPatterns"), pattern = ".vcf", full.names = TRUE)
+vcf_files <- vcf_files[-7]
+sample_names <- c("blood-AC", "blood-ACC55", "blood-BCH", "colon1", "colon2", "colon3", "intestine1", "intestine2", "intestine3", "liver1", "liver2", "liver3")
+vcfs <- read_vcfs_as_granges(vcf_files, sample_names, ref_genome)
+tissue <- c(rep("blood", 3), rep("colon",3), rep("intestine",3), rep("liver",3))
+type_occurrences <- mut_type_occurrences(vcfs, ref_genome)
+mut_mat <- mut_matrix(vcf_list = vcfs, ref_genome = ref_genome)
+```
+
+```{r, include = FALSE}
+nmf_res <- extract_signatures(mut_mat, rank = 2, nrun = 10)
+colnames(nmf_res$signatures) <- c("Signature A", "Signature B")
+rownames(nmf_res$contribution) <- c("Signature A", "Signature B")
+```
+
+# Given that we observe a A(C>T)A mutation in the blood-AC sample, what is the probability that it came from Signature A?
+
+## Method 1: Splitting Pr(A(C>T)A) into A(C>T)A mutations from Signature A and A(C>T)A mutations from Signature B
+$Pr(SigA|A(C>T)A) = \frac{Pr(SigA)Pr(A(C>T)A|SigA)}{Pr(SigA)Pr(A(C>T)A|SigA)+Pr(SigB)Pr(A(C>T)A|SigB)}$
+
+```{r, echo = FALSE}
+plot_96_profile(nmf_res$signatures, condensed = TRUE)
+```
+From the plot above we observe that $Pr(A(C>T)A|SigA)= 0.025$ and $Pr(A(C>T)A|SigB)=0.05$.
+```{r, echo= FALSE}
+plot_contribution(nmf_res$contribution, nmf_res$signature, mode = "relative", coord_flip = TRUE)
+nmf_res$contribution
+```
+
+```{r}
+0.1093118/(0.2800362+0.1093118)
+0.2800362/(0.2800362+0.1093118)
+```
+
+From the plot above and the contributions of Signature A and B, we see that for the blood-AC sample $Pr(SigA) \approx 0.28$ and $Pr(SigB) \approx 0.72$.\
+Then $Pr(SigA|A(C>T)A) = \frac{Pr(SigA)Pr(A(C>T)A|SigA)}{Pr(SigA)Pr(A(C>T)A|SigA)+Pr(SigB)Pr(A(C>T)A|SigB)}=\frac{0.28(0.025)}{0.28(0.025)+0.72(0.05)}=\frac{0.007}{0.043}=0.1628$
+
+## Method 2: Using Total Pr(A(C>T)A) from the mutational profile of the sample
+$Pr(SigA|A(C>T)A)=\frac{Pr(SigA)Pr(A(C>T)A|SigA)}{Pr(A(C>T)A)}$
+
+```{r,echo=FALSE}
+plot_96_profile(mut_mat[,c(1,7)])
+```
+In the blood-AC sample, A(C>T)A mutations account for approximately 0.05 of the total mutations.\
+$Pr(SigA|A(C>T)A)=\frac{Pr(SigA)Pr(A(C>T)A|SigA)}{Pr(A(C>T)A)}=\frac{0.28(0.025)}{0.05}=\frac{0.007}{0.05}=0.14$
+
+```{r,echo=FALSE}
+plot_contribution(nmf_res$contribution, nmf_res$signature, mode = "absolute", coord_flip = TRUE)
+```
+
+
+
