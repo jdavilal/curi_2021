@@ -38,12 +38,14 @@ rownames(nmf_res$contribution) <- c("Signature A", "Signature B")
 
 ```{r}
 #Goal: Pr(Signature|Mutation) in a particular sample
-
-Bayes_function <- function(mutation, process, sample, nmf_matrix, mutation_matrix){
+#Change name for nmf_matrix
+#Split denominator into two pieces, add a parameter for which method we use
+#One function that doesn't need mutational signature
+Bayes_function <- function(mutation, signature, sample, nmf_matrix, mutation_matrix){
   #Pr(Mutation|Signature)
-  a <- nmf_matrix$signatures[mutation,process]/sum(nmf_matrix$signatures[,process])
+  a <- nmf_matrix$signatures[mutation,signature]/sum(nmf_matrix$signatures[,signature])
   #Pr(Signature)
-  b <- nmf_matrix$contribution[process,sample]/sum(nmf_matrix$contribution[,sample])
+  b <- nmf_matrix$contribution[signature,sample]/sum(nmf_matrix$contribution[,sample])
   #Pr(Mutation)
   c <- mutation_matrix[mutation, sample]/sum(mutation_matrix[,sample])
   #Bayes Formula Calculation
@@ -56,5 +58,9 @@ Bayes_function <- function(mutation, process, sample, nmf_matrix, mutation_matri
 #Goal: Pr(SignatureA|A[C>A]G) and Pr(SignatureB|A[C>A]G) for sample colon1
 Bayes_function("A[C>A]G", "Signature A", "colon1", nmf_res, mut_mat)
 Bayes_function("A[C>A]G", "Signature B", "colon1", nmf_res, mut_mat)
+```
+
+```{r}
+plot_96_profile(nmf_res$signatures)
 ```
 
