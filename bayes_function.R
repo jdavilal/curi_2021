@@ -1,7 +1,4 @@
-library(tidyverse)
-library(MutationalPatterns)
-library(BSgenome)
-library(BiocManager)
+
 
 extract_all_prob <- function(mutation, sample, nmf_res) {
   
@@ -35,14 +32,15 @@ extract_all_prob <- function(mutation, sample, nmf_res) {
   
   # Intialize acummulator and vector to store posteriors
   i <- 1
-  posteriors <- vector(mode = "double", length = length(colnames(nmf_res$signatures)))
+  posteriors <- vector(mode = "list", length = length(colnames(nmf_res$signatures)))
   
   # Fills posteriors
   for (x in colnames(nmf_res$signatures)) {
+    names(posteriors)[i] <- x
     # Calculates numerator of Bayes formula for each signature
     numerator <- prob[[x]][1] * prob[[x]][2]
     # Finishes Bayes calculation and inserts value into the vector posteriors
-    posteriors[i] <- numerator / denominator
+    posteriors[[i]] <- numerator / denominator
     
     # Accumulating
     i <- i + 1
