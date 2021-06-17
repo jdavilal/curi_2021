@@ -265,7 +265,7 @@ From the figure we get that:
 On further inspection we compare our third signature against a previously identified FFPE signature
 
 ```{r warning=FALSE, message=FALSE}
-ffpe.aditya <-  load_old_mutational_matrix("supplied_results/signatures/ffpe.aditya.txt")
+ffpe.aditya <-  load_old_mutational_matrix("supplied_results/ffpe.signature.txt")
 ```
 
 And we obtain that it has a cosine similarity of `r round(cos_sim(ffpe.aditya,nmf.res$signatures[,3]),2)` against this signature. 
