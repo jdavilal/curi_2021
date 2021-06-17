@@ -1,0 +1,86 @@
+---
+title: "Function"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(MutationalPatterns)
+library(BSgenome)
+library(BiocManager)
+install("BSgenome.Hsapiens.UCSC.hg19")
+ref_genome <- "BSgenome.Hsapiens.UCSC.hg19"
+library(ref_genome, character.only = TRUE)
+```
+
+```{r}
+vcf_files1 <- list.files(system.file("extdata", package="MutationalPatterns"), pattern = ".vcf", full.names = TRUE)
+#vcf_files <- vcf_files1[-c(1,2,3,7)]
+vcf_files <-vcf_files1[c(4,5,6)]
+sample_names <- c("colon1", "colon2", "colon3")
+vcfs <- read_vcfs_as_granges(vcf_files, sample_names, ref_genome)
+tissue <- c(rep("colon",3))
+```
+
+```{r}
+mut_mat <- mut_matrix(vcf_list = vcfs, ref_genome = ref_genome)
+mut_mat <- mut_mat + 0.0001
+```
+
+```{r}
+nmf_res <- extract_signatures(mut_mat, rank = 2, nrun = 10)
+colnames(nmf_res$signatures) <- c("Signature A", "Signature B")
+rownames(nmf_res$contribution) <- c("Signature A", "Signature B")
+```
+
+```{r}
+#Goal: Pr(Signature|Mutation) in a particular sample
+#Change name for nmf_matrix
+#Split denominator into two pieces, add a parameter for which method we use
+#One function that doesn't need mutational signature
+Bayes_function <- function(mutation, signature, sample, nmf_matrix, mutation_matrix){
+  #Pr(Mutation|Signature)
+  a <- nmf_matrix$signatures[mutation,signature]/sum(nmf_matrix$signatures[,signature])
+  #Pr(Signature)
+  b <- nmf_matrix$contribution[signature,sample]/sum(nmf_matrix$contribution[,sample])
+  #Pr(Mutation)
+  c <- mutation_matrix[mutation, sample]/sum(mutation_matrix[,sample])
+  #Bayes Formula Calculation
+  prob <- a*b/c
+  return(prob)
+}
+```
+
+```{r}
+Bayes_function <- function(mutation, signature, sample, nmf_matrix, mutation_matrix){
+  #Pr(Mutation|Signature)
+  prob_mut_given_sig <- nmf_matrix$signatures[mutation,signature]/sum(nmf_matrix$signatures[,signature])
+  #Pr(Signature)
+  prob_sig <- nmf_matrix$contribution[signature,sample]/sum(nmf_matrix$contribution[,sample])
+  #Pr(Mutation)
+  
+  #Bayes Formula Calculation
+  prob <- a*b/c
+  return(prob)
+}
+```
+
+```{r}
+#Goal: Pr(SignatureA|A[C>A]G) and Pr(SignatureB|A[C>A]G) for sample colon1
+Bayes_function("A[C>A]G", "Signature A", "colon1", nmf_res, mut_mat)
+Bayes_function("A[C>A]G", "Signature B", "colon1", nmf_res, mut_mat)
+```
+
+```{r}
+plot_96_profile(nmf_res$signatures)
+```
+
+```{r}
+Bayes_function("G[C>T]G", "Signature A", "colon1", nmf_res, mut_mat)
+Bayes_function("G[C>T]G", "Signature B", "colon1", nmf_res, mut_mat)
+```
+
