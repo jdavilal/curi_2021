@@ -38,6 +38,8 @@ load_cosmic_matrix<- function(mut.order="supplied_results/mut_sig.order.txt") {
 ```
 
 ```{r}
+#Creates samples/mutational profiles using selected signatures from COSMIC
+#and desired contributions from each signature.
 create_test_sample <- function(signatures, prop, num) {
   cosmic_signatures <- load_cosmic_matrix()
   process <- cosmic_signatures[, signatures]
@@ -49,8 +51,15 @@ create_test_sample <- function(signatures, prop, num) {
 ```
 
 ```{r}
-#Create a set of 4 test samples with extreme propotions of COSMIC signatures 18 and 21
-test_sample <- create_test_sample(c(18,21), c(1,0,0,1,.9,.1,.1,.9),4)
+#Create a set of 7 test samples with extreme proportions of COSMIC signatures 18 and 21
+test_sample <- create_test_sample(c(18,21), c(  1,  0,
+                                              0.9,0.1,
+                                              0.7,0.3,
+                                              0.5,0.5,
+                                              0.3,0.7,
+                                              0.1,0.9,
+                                                0,  1),
+                                  num = 7)
 test_sample
 ```
 
@@ -62,8 +71,8 @@ test_nmf <- extract_signatures(test_sample, rank = 2, nrun = 10)
 plot_96_profile(test_nmf$signatures)
 
 #set column and row names to names of signatures
-colnames(test_nmf$signatures) <- c("Signature 21", "Signature 18")
-rownames(test_nmf$contribution) <- c("Signature 21", "Signature 18")
+colnames(test_nmf$signatures) <- c("Signature 18", "Signature 21")
+rownames(test_nmf$contribution) <- c("Signature 18", "Signature 21")
 ```
 
 ```{r}
@@ -71,27 +80,99 @@ test_nmf$contribution
 plot_contribution(test_nmf$contribution, test_nmf$signature, mode = "relative", coord_flip = TRUE)
 ```
 
+## Proportions should lean in favor for signature 18 and decrease with its sample size
+
 ```{r}
 #G[C>A]A mutation is the most common in Signature 18
+#1287 times more likely in signature 18 than 21
 #Sample 1 is ~100% Signature 18
 extract_all_prob("G[C>A]A", 1, test_nmf)
-#Sample 3 is ~90% Signature 18
+#Sample 2 is ~90% Signature 18
+extract_all_prob("G[C>A]A", 2, test_nmf)
+#Sample 3 is ~70% Signature 18
 extract_all_prob("G[C>A]A", 3, test_nmf)
+#Sample 3 is ~50% Signature 18
+extract_all_prob("G[C>A]A", 3, test_nmf)
+#Sample 4 is ~30% Signature 18
+extract_all_prob("G[C>A]A", 4, test_nmf)
+#Sample 5 is ~10% Signature 18
+extract_all_prob("G[C>A]A", 5, test_nmf)
+#Sample 6 is ~0% Signature 18
+extract_all_prob("G[C>A]A", 6, test_nmf)
 ```
+
+## Proportions should lean in favor for signature 21 and decrease with its sample size
 
 ```{r}
 #G[T>C]A mutation is the most common in Signature 21
-#Sample 2 is ~100% Signature 21
-extract_all_prob("G[T>C]A", 2, test_nmf)
-#Sample 4 is ~90% Signature 21
+#269 times more likely in signature 21 than 18
+#Sample 6 is ~100% Signature 21
+extract_all_prob("G[T>C]A", 6, test_nmf)
+#Sample 5 is ~90% Signature 21
+extract_all_prob("G[T>C]A", 5, test_nmf)
+#Sample 4 is ~70% Signature 21
 extract_all_prob("G[T>C]A", 4, test_nmf)
+#Sample 4 is ~50% Signature 21
+extract_all_prob("G[T>C]A", 4, test_nmf)
+#Sample 3 is ~30% Signature 21
+extract_all_prob("G[T>C]A", 3, test_nmf)
+#Sample 2 is ~10% Signature 21
+extract_all_prob("G[T>C]A", 2, test_nmf)
+#Sample 1 is ~0% Signature 21
+extract_all_prob("G[T>C]A", 1, test_nmf)
 ```
 
 ```{r}
-#low levels of C[C>T]G mutations in both signatures
-#Sample 3 is 90% Signature 18 and 10% Signature 21
-extract_all_prob("C[C>T]G", 3, test_nmf)
-#Sample 4 is 90% Signature 21 and 10% Signature 18
-extract_all_prob("C[C>T]G", 4, test_nmf)
+#Find smallest difference between contribution rate for every mutation type between
+#signature 18 and 21. Attempting to find mutation type w/ equal probabilities for both.
+cosmic_signatures <- load_cosmic_matrix()
+(process18 <- cosmic_signatures[, c(18)])
+(process21 <- cosmic_signatures[, c(21)])
+diff_signatures <- abs(process21-process18)
+diff_signatures[93]=1 #contribution for signature 21 is 0 (T[T>G]A)
+diff_signatures[85]=1 #contribution for signature 21 is 0
+which.min(diff_signatures)
+```
+
+## Signature 21 probabilities should be zero for all samples
+
+```{r}
+#LOW probability of T[T>G]A mutation in signature 18
+#zero probability of T[T>G]A mutation in signature 21
+#100% Signature 18 and 0% Signature 21
+extract_all_prob("T[T>G]A", 1, test_nmf)
+#90% Signature 18 and 10% Signature 21
+extract_all_prob("T[T>G]A", 2, test_nmf)
+#70% Signature 18 and 30% Signature 21
+extract_all_prob("T[T>G]A", 3, test_nmf)
+#50% Signature 18 and 50% Signature 21
+extract_all_prob("T[T>G]A", 4, test_nmf)
+#30% Signature 18 and 70% Signature 21
+extract_all_prob("T[T>G]A", 5, test_nmf)
+#10% Signature 18 and 90% Signature 21
+extract_all_prob("T[T>G]A", 6, test_nmf)
+#0% Signature 18 and 100% Signature 21
+extract_all_prob("T[T>G]A", 7, test_nmf) #BAD RESULT
+```
+
+## Probabilities should almost reflect contribution proportions
+
+```{r}
+#Low chances of C[C>G]A mutations in both but roughly equal chances of mutations
+#(4.58 more likely in signature 18, as opposed to hundreds or thousands times more likely)
+#100% Signature 18 and 0% Signature 21
+extract_all_prob("C[C>G]A", 1, test_nmf)
+#90% Signature 18 and 10% Signature 21
+extract_all_prob("C[C>G]A", 2, test_nmf)
+#70% Signature 18 and 30% Signature 21
+extract_all_prob("C[C>G]A", 3, test_nmf)
+#50% Signature 18 and 50% Signature 21
+extract_all_prob("C[C>G]A", 4, test_nmf)
+#30% Signature 18 and 70% Signature 21
+extract_all_prob("C[C>G]A", 5, test_nmf)
+#10% Signature 18 and 90% Signature 21
+extract_all_prob("C[C>G]A", 6, test_nmf)
+#0% Signature 18 and 100% Signature 21
+extract_all_prob("C[C>G]A", 7, test_nmf)
 ```
 
