@@ -90,8 +90,8 @@ extract_all_prob("G[T>C]A", 4, test_nmf)
 ```{r}
 #low levels of C[C>T]G mutations in both signatures
 #Sample 3 is 90% Signature 18 and 10% Signature 21
-extract_all_prob("C[C>T]G", 3, test_nmf)
+extract_all_prob("T[C>T]G", 3, test_nmf)
 #Sample 4 is 90% Signature 21 and 10% Signature 18
-extract_all_prob("C[C>T]G", 4, test_nmf)
+extract_all_prob("T[C>T]G", 4, test_nmf)
 ```
 
