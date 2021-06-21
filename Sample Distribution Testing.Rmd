@@ -1,0 +1,88 @@
+---
+title: "Sample Distribution Testing"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(MutationalPatterns)
+library(NMF)
+source("simulation.R")
+```
+
+```{r}
+load_old_mutational_matrix<- function(filename,mut.order="supplied_results/mut_sig.order.txt") {
+
+  mutational.signature = read_tsv(filename)
+  mut_mat = read_tsv(mut.order)
+
+  mut.join = mutational.signature %>%
+    inner_join(mut_mat)
+  
+  order.tri = unique(mut.join$ext.context)
+
+  mut.join = mut.join %>%
+    mutate(ext.context = factor (ext.context, levels = order.tri)) %>%
+    select(ext.context,prob)
+  
+  mut.matrix=as.matrix(sapply(mut.join[,2:ncol(mut.join)], as.numeric))  
+  rownames(mut.matrix) = mut.join$ext.context
+ 
+  return (t(mut.matrix)[,1:96])
+}
+
+#load ffpe signature
+ffpe.signature <-  load_old_mutational_matrix("supplied_results/ffpe.signature.txt")
+ffpe.signature
+```
+
+```{r}
+#convert ffpe.signature to a matrix to be compatible with MutationalPatterns
+ffpe.signature.matrix <- as.matrix(ffpe.signature)
+plot_96_profile(ffpe.signature.matrix)
+```
+
+```{r}
+#create ffpe sample vector of 1000 mutations
+ffpe.sample.vector <- create_signature_sample_vector(ffpe.signature.matrix, 1000)
+ffpe.sample.vector
+```
+
+```{r}
+#create sample matrix to match ffpe signature
+ffpe.sample.matrix <- create_signature_sample_matrix(ffpe.signature.matrix, 10000)
+ffpe.sample.matrix
+#calculate the cosine similarity between sample matrix and original ffpe matrix
+cos_sim_matrix(ffpe.sample.matrix, ffpe.signature.matrix)
+#plot original ffpe matrix
+plot_96_profile(ffpe.signature.matrix)
+#plot our ffpe sample matrix
+plot_96_profile(ffpe.sample.matrix)
+```
+
+```{r}
+#load COSMIC signatures
+cosmic.sigs <- load_cosmic_matrix()
+```
+
+```{r}
+polE <- as.matrix(cosmic.sigs[,10])
+polE
+plot_96_profile(polE)
+
+polE.sample.vector <- create_signature_sample_vector(polE, 1000)
+polE.sample.vector
+
+polE.sample.matrix <- create_signature_sample_matrix(polE, 1000)
+polE.sample.matrix
+cos_sim_matrix(polE, polE.sample.matrix)
+plot_96_profile(polE.sample.matrix)
+```
+
+
+```
+
