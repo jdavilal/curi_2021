@@ -79,5 +79,6 @@ create_signature_sample_matrix <- function(signature.matrix, number.of.mutations
   #creates a matrix of sample frequencies and defines row names as mutation types
   sample.matrix<- as.matrix(sample.df$frequencies)
   rownames(sample.matrix)= mutations
+  #returns matrix
   return(sample.matrix)
 }
