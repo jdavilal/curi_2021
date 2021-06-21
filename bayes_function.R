@@ -2,6 +2,12 @@
 
 extract_all_prob <- function(mutation, sample, nmf_res) {
   
+  if (class(colnames(nmf_res$signature)) == "NULL") {
+    stop("Column names for nmf_res$signature is empty")
+  } else if (class(rownames(nmf_res$contribution)) == "NULL") {
+    stop("Row names for nmf_res$contribution is empty")
+  }
+  
   # Creates empty list of length equal to amount of signatures
   prob = vector(mode = "list", length=length(colnames(nmf_res$signatures)))
   
