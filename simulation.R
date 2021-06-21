@@ -31,5 +31,3 @@ create_test_sample <- function(signatures, prop, num) {
   
   return ((process %*% exposures) * 10^5)
 }
-
-cosmic_signatures[, "Signature.21"]
