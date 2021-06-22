@@ -76,6 +76,8 @@ plot_96_profile(polE)
 
 polE.sample.vector <- create_signature_sample_vector(polE, 1000)
 polE.sample.vector
+#function that calculates the cosine similarity between the vector of mutations and a signature matrix
+signature_cosine_similarity(polE.sample.vector, polE)
 
 polE.sample.matrix <- create_signature_sample_matrix(polE, 1000)
 polE.sample.matrix
@@ -84,5 +86,4 @@ plot_96_profile(polE.sample.matrix)
 ```
 
 
-```
 
