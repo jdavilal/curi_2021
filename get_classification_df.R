@@ -10,7 +10,9 @@ get_classification_df <- function(samples, sig.names, signatures) {
     signature.sample <- append(signature.sample, samples[[i]])
   }
   
-  df <- data.frame(signature.sample, names)
+  df.final <- data.frame(signature.sample, names)
+  colnames(df.final) <- c("mutations", "truth")
+  
   
   #converts sample vector into a table of probabilities
   tab <- table(signature.sample)/sum(table(signature.sample))
@@ -46,7 +48,6 @@ get_classification_df <- function(samples, sig.names, signatures) {
   colnames(nmf_res$signatures) <- sig.names
   rownames(nmf_res$contribution) <- sig.names
   
-  #prob.list <- vector(mode = "list", length = length(samples))
   
   prob.list <- list()
   
@@ -54,14 +55,44 @@ get_classification_df <- function(samples, sig.names, signatures) {
     prob.list[[i]]<-vector()
   }
 
-  for (x in mutations) {
-    probs <- extract_all_prob(x, 1, nmf_res)
-    for (i in 1:length(samples)){
-    prob.list[i] <- append(prob.list[i], probs[[i]])
-    print(prob.list[i])
+  for (m in mutations) {
+    probs <- extract_all_prob(m, 1, nmf_res)
+    for (n in 1:length(samples)){
+    prob.list[[n]][m] <- probs[[n]]
     }
   }
-    
   
-  return (prob.list)
+  prob.list.df = data.frame(prob.list)
+  rownames(prob.list.df) <- NULL
+  colnames(prob.list.df) <- sig.names
+  
+  prob.list.df$mutations <- mutations
+  
+  df.final <- left_join(df.final, prob.list.df, by = "mutations")
+  
+  classify <- vector(mode = "character")
+  for (row in df.final){
+    x <- colnames(df.final[which.max(df.final[row,])])
+    append(classify, x)
+  }
+  
+ # df.final <- df.final %>%
+    #group_by(mutations) %>%
+    #mutate(classify = colnames(df.final)[which.max()]) %>%
+    #ungroup()
+  
+  #colnames(df.final)[which.max(df.final[1,])]
+  
+  #classify.df <- df.final %>%
+    #pivot_longer(sig.names, names_to = "process", values_to = "probability") %>%
+    #group_by(mutations) %>%
+    #filter(probability == max(probability)) %>%
+    #mutate(classify = process) %>%
+    #select(mutations, classify)
+  
+  #df.final <- df.final %>%
+    #left_join(classify.df, by = "mutations")
+  
+  return (classify)
+
 }
