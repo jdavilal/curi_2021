@@ -30,6 +30,13 @@ ffpe.truth <- rep("FFPE", 100)
 ```
 
 ```{r}
+test<- get_classification_df(list(sample.sig6, sample.ffpe), c("MMR","FFPE"), list(cosmic.sig6, ffpe.sig) )
+view(test)
+test1.matrix <- as.matrix(test[[1]])
+```
+
+
+```{r}
 # Create ground truth column
 
 df.final <- data.frame(append(sample.sig6, sample.ffpe), append(sig6.truth, ffpe.truth))

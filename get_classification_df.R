@@ -71,28 +71,21 @@ get_classification_df <- function(samples, sig.names, signatures) {
   df.final <- left_join(df.final, prob.list.df, by = "mutations")
   
   classify <- vector(mode = "character")
-  for (row in df.final){
-    x <- colnames(df.final[which.max(df.final[row,])])
-    append(classify, x)
+  
+  for (row in 1:nrow(df.final)){
+    probabilities <- df.final[row,3:(2+length(samples))]
+    #print(colnames(probabilities)[which.max(probabilities[1,])])
+    classifier <- colnames(probabilities)[which.max(probabilities[1,])]
+    classify[row]<- classifier
+    #print(df.final[row,3:(2+length(samples))])
   }
   
- # df.final <- df.final %>%
-    #group_by(mutations) %>%
-    #mutate(classify = colnames(df.final)[which.max()]) %>%
-    #ungroup()
+  df.final$classify <- classify
   
-  #colnames(df.final)[which.max(df.final[1,])]
+  df.final <- df.final %>%
+    mutate(misclassification = ifelse(classify != truth, 1, 0))
   
-  #classify.df <- df.final %>%
-    #pivot_longer(sig.names, names_to = "process", values_to = "probability") %>%
-    #group_by(mutations) %>%
-    #filter(probability == max(probability)) %>%
-    #mutate(classify = process) %>%
-    #select(mutations, classify)
-  
-  #df.final <- df.final %>%
-    #left_join(classify.df, by = "mutations")
-  
-  return (classify)
+
+  return (df.final)
 
 }
