@@ -33,7 +33,7 @@ ffpe.truth <- rep("FFPE", 100)
 # Create ground truth column
 
 df.final <- data.frame(append(sample.sig6, sample.ffpe), append(sig6.truth, ffpe.truth))
-df.final
+colnames(df.final) <- c("mutations", "truth")
 ```
 
 ```{r}
@@ -86,14 +86,22 @@ ffpe.prob <- vector(mode = "double")
 
 for (x in mutations) {
   probs <- extract_all_prob(x, 1, nmf_res)
-  print(x)
-  print(probs)
   mmr.prob <- c(mmr.prob, probs$MMR)
   ffpe.prob <- c(ffpe.prob, probs$FFPE)
 }
 
-mmr.prob
-ffpe.prob
+df2 <- data.frame(mutations, mmr.prob, ffpe.prob)
+df2
+
+df.final <- left_join(df.final, df2, by = "mutations")
+
+df.final <- df.final %>%
+  mutate(
+    classify = ifelse(mmr.prob > ffpe.prob, "MMR", "FFPE"),
+    missClassification = ifelse(truth != classify, 1, 0)
+  )
+
+mean(df.final$missClassification)
 ```
 
 
