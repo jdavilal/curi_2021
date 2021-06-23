@@ -20,6 +20,26 @@ load_cosmic_matrix<- function(mut.order="supplied_results/mut_sig.order.txt") {
   return(cancer_signatures)
 }
 
+load_old_mutational_matrix<- function(filename,mut.order="supplied_results/mut_sig.order.txt") {
+  
+  mutational.signature = read_tsv(filename)
+  mut_mat = read_tsv(mut.order)
+  
+  mut.join = mutational.signature %>%
+    inner_join(mut_mat)
+  
+  order.tri = unique(mut.join$ext.context)
+  
+  mut.join = mut.join %>%
+    mutate(ext.context = factor (ext.context, levels = order.tri)) %>%
+    select(ext.context,prob)
+  
+  mut.matrix=as.matrix(sapply(mut.join[,2:ncol(mut.join)], as.numeric))  
+  rownames(mut.matrix) = mut.join$ext.context
+  
+  return (t(mut.matrix)[,1:96])
+}
+
 # Prop = [0.1, 0.9] vector
 # Signatures = [21, 7] vector
 
@@ -31,8 +51,6 @@ create_test_sample <- function(signatures, prop, num) {
   
   return ((process %*% exposures) * 10^5)
 }
-
-cosmic_signatures[, "Signature.21"]
 
 #Creating sample to match signature distribution (vector of all mutations)
 

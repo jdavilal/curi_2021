@@ -1,0 +1,103 @@
+---
+title: "multiple_sig_sample"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(MutationalPatterns)
+library(NMF)
+library(tidyverse)
+
+source("simulation.R")
+source("bayes_function.R")
+```
+
+```{r}
+cosmic.sigs <- load_cosmic_matrix()
+ffpe.sig <- as.matrix(load_old_mutational_matrix("supplied_results/ffpe.signature.txt"))
+```
+
+```{r}
+cosmic.sig6 <- as.matrix(cosmic.sigs[, 6])
+cosmic.sig6
+
+sample.sig6 <- create_signature_sample_vector(cosmic.sig6, 100)
+sig6.truth <- rep("MMR", 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+ffpe.truth <- rep("FFPE", 100)
+```
+
+```{r}
+# Create ground truth column
+
+df.final <- data.frame(append(sample.sig6, sample.ffpe), append(sig6.truth, ffpe.truth))
+df.final
+```
+
+```{r}
+signature.sample <- append(sample.sig6, sample.ffpe)
+
+#converts sample vector into a table of probabilities
+tab <- table(signature.sample)/sum(table(signature.sample))
+tab
+#converts table of probabilities to a data frame and defines column names
+sample.probs.df <- data.frame(tab)
+colnames(sample.probs.df) <- c("mutations", "frequencies")
+sample.probs.df
+
+#defines a function that joins two data frames and replaces NA with 0
+left_join_NA <- function(x, y, by) {
+  left_join(x = x, y = y, by = by) %>% 
+    mutate_each(funs(replace(., which(is.na(.)), 0)))
+}
+
+#creates a vector of mutation types
+mutations <- rownames(cosmic.sig6)
+
+#creates a data.frame of mutation types to join with sample probabilities
+df <- data.frame(mutations)
+df
+
+#joins together sample probabilities with data frame of mutation types so that all 96 mutation types are included
+sample.df <- left_join_NA(df, sample.probs.df, by = "mutations")
+sample.df
+
+#creates a matrix of sample frequencies and defines row names as mutation types
+sample.matrix<- as.matrix(sample.df$frequencies) + 0.0001
+rownames(sample.matrix)= mutations
+
+plot_96_profile(sample.matrix)
+
+nmf_res <- fit_to_signatures(sample.matrix, cbind(cosmic.sig6, ffpe.sig))
+nmf_res$signatures <- cbind(cosmic.sig6, ffpe.sig)
+nmf_res
+```
+
+```{r}
+colnames(nmf_res$signatures) <- c("MMR", "FFPE")
+rownames(nmf_res$contribution) <- c("MMR", "FFPE")
+
+plot_96_profile(nmf_res$signatures)
+
+mmr.prob <- vector(mode = "double")
+ffpe.prob <- vector(mode = "double")
+
+for (x in mutations) {
+  probs <- extract_all_prob(x, 1, nmf_res)
+  print(x)
+  print(probs)
+  mmr.prob <- c(mmr.prob, probs$MMR)
+  ffpe.prob <- c(ffpe.prob, probs$FFPE)
+}
+
+mmr.prob
+ffpe.prob
+```
+
+
+
+
+
+
