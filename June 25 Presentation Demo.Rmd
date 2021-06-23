@@ -1,0 +1,239 @@
+---
+title: "Friday Presentation Demonstration"
+author: "Audrey Mitchell, Marco Ruiz, Soua Yang"
+date: "6/23/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(MutationalPatterns)
+source("bayes_function.R")
+source("simulation.R")
+```
+
+#Show Bayes function, explain inputs and outputs
+
+#Testing our function by generating mutational profiles with varying proportions of distinct mutational signatures (Signature 18 and Signature 21) from the COSMIC library
+```{r}
+test_sample <- create_test_sample(c(18,21), c(  1,  0,
+                                              0.9,0.1,
+                                              0.7,0.3,
+                                              0.5,0.5,
+                                              0.3,0.7,
+                                              0.1,0.9,
+                                                0,  1),
+                                  num = 7)
+test_sample
+```
+
+```{r}
+#Run NMF analysis on signatures
+test_nmf <- extract_signatures(test_sample, rank = 2, nrun = 10)
+
+#Plot signatures to match with signatures 18 and 21: V1 appears to match signature 21, V2 appears to match signature 18
+plot_96_profile(test_nmf$signatures)
+
+#set column and row names to names of signatures
+colnames(test_nmf$signatures) <- c("Signature 18", "Signature 21")
+rownames(test_nmf$contribution) <- c("Signature 18", "Signature 21")
+```
+
+```{r}
+test_nmf$contribution
+plot_contribution(test_nmf$contribution, test_nmf$signature, mode = "relative", coord_flip = TRUE)
+```
+
+## Proportions should lean in favor for signature 21 and decrease with its sample size
+
+```{r}
+#G[T>C]A mutation is the most common in Signature 21
+#269 times more likely in signature 21 than 18
+#Sample 6 is ~100% Signature 21
+extract_all_prob("G[T>C]A", 6, test_nmf)
+#Sample 5 is ~90% Signature 21
+extract_all_prob("G[T>C]A", 5, test_nmf)
+#Sample 4 is ~70% Signature 21
+extract_all_prob("G[T>C]A", 4, test_nmf)
+#Sample 4 is ~50% Signature 21
+extract_all_prob("G[T>C]A", 4, test_nmf)
+#Sample 3 is ~30% Signature 21
+extract_all_prob("G[T>C]A", 3, test_nmf)
+#Sample 2 is ~10% Signature 21
+extract_all_prob("G[T>C]A", 2, test_nmf)
+#Sample 1 is ~0% Signature 21
+extract_all_prob("G[T>C]A", 1, test_nmf)
+```
+
+## Proportions should lean in favor for signature 18 and decrease with its sample size
+
+```{r}
+#G[C>A]A mutation is the most common in Signature 18
+#1287 times more likely in signature 18 than 21
+#Sample 1 is ~100% Signature 18
+extract_all_prob("G[C>A]A", 1, test_nmf)
+#Sample 2 is ~90% Signature 18
+extract_all_prob("G[C>A]A", 2, test_nmf)
+#Sample 3 is ~70% Signature 18
+extract_all_prob("G[C>A]A", 3, test_nmf)
+#Sample 3 is ~50% Signature 18
+extract_all_prob("G[C>A]A", 3, test_nmf)
+#Sample 4 is ~30% Signature 18
+extract_all_prob("G[C>A]A", 4, test_nmf)
+#Sample 5 is ~10% Signature 18
+extract_all_prob("G[C>A]A", 5, test_nmf)
+#Sample 6 is ~0% Signature 18
+extract_all_prob("G[C>A]A", 6, test_nmf)
+```
+
+## Probabilities should almost reflect contribution proportions
+
+```{r}
+#low levels of C[C>T]G mutations in both signatures
+#Sample 3 is 90% Signature 18 and 10% Signature 21
+extract_all_prob("T[C>T]G", 3, test_nmf)
+#Sample 4 is 90% Signature 21 and 10% Signature 18
+extract_all_prob("T[C>T]G", 4, test_nmf)
+```
+
+#Example applying our function to real data
+```{r}
+# Loads a mutational profile with columns sample, ext.context and num
+# Subsets such file to samples in sample.list and generates a matrix
+# with the mutational profile that can be used by MutationalPatterns
+load_mutational_matrix<- function(filename, sample.list) {
+
+  mutational.signature <-  read_tsv(filename)
+  order.tri <-  unique(mutational.signature$ext.context)
+  sample.names <-  unique(mutational.signature$sample)
+  
+  mutational.signature <-  mutational.signature %>%
+    mutate(ext.context = factor (ext.context, levels = order.tri)) %>%
+    filter(sample %in% sample.list) %>%
+    select(sample,ext.context,num) %>%
+    spread(sample,num) %>%
+    select(one_of("ext.context",sample.names))
+
+  mut.matrix <- as.matrix(sapply(mutational.signature[,2:ncol(mutational.signature)], as.numeric))  
+  rownames(mut.matrix) <-  mutational.signature$ext.context
+ 
+  # Add 1e-04 for use with NMF
+  mut.matrix <-  mut.matrix + 1e-04
+
+  return (mut.matrix)
+}
+
+# Loads the published COSMIC mutational signatures in a format that can be
+# used by MutationalPatterns
+load_cosmic_matrix<- function(mut.order="supplied_results/mut_sig.order.txt") {
+
+  sp_url <- paste("https://cancer.sanger.ac.uk/cancergenome/assets/",
+                "signatures_probabilities.txt", sep = "")
+   
+  cancer_signatures <-  read.table(sp_url, sep = "\t", header = TRUE)
+  # Match the order of the mutation types to MutationalPatterns standard
+  mut_mat <-  read_tsv(mut.order)
+  new_order <-  match(mut_mat$ext.context, cancer_signatures$Somatic.Mutation.Type) 
+  # Reorder cancer signatures dataframe
+  cancer_signatures <-  cancer_signatures[as.vector(new_order),]
+  # Add trinucletiode changes names as row.names
+  row.names(cancer_signatures) <-  cancer_signatures$Somatic.Mutation.Type
+  # Keep only 96 contributions of the signatures in matrix
+  cancer_signatures <-  as.matrix(cancer_signatures[,4:33])
+  return(cancer_signatures)
+}
+
+mapping.stats <- read_tsv("supplied_results/master_statistics_table.txt") %>%
+  select(sample.name,tumor.status,stat.Total_Reads)
+
+samples.pilot <-  c("MSI_MLH1p_1")
+samples.na.tissue <-  c("MSI_MLH1G_2","MSI_MLH1G_6","MSI_MSH2_11","MSS_1")
+samples.exclude.age <-  c("MSI_MLH1HM_14")
+samples.wrong.phenotype <-  c("MSI_MLH1G_9")
+samples.small.bowel <- c("MSI_PMS2_12","MSS_9")
+
+min.reads <- 1e7 #minimum number of reads
+
+mapping.info.filter <-  mapping.stats %>%
+  spread(tumor.status,stat.Total_Reads) %>%
+  filter(!is.na(normal)) %>%
+  filter(normal>min.reads & tumor>min.reads) %>%
+  filter(!sample.name %in% samples.pilot) %>%
+  filter(!sample.name %in% samples.na.tissue) %>%
+  filter(!sample.name %in% samples.exclude.age) %>%
+  filter(!sample.name %in% samples.wrong.phenotype) %>%
+  filter(!sample.name %in% samples.small.bowel) 	
+```
+
+```{r}
+mut.matrix <-  load_mutational_matrix("supplied_results/signatures.txt",
+  mapping.info.filter$sample.name)
+```
+
+```{r}
+nmf.res <- extract_signatures(mut.matrix, rank = 4, nrun = 10)
+sig.names <-  c("PolE","Aging","FFPE","MMR")
+colnames(nmf.res$signatures) <- sig.names
+rownames(nmf.res$contribution) <- sig.names
+```
+
+```{r}
+plot_96_profile(nmf.res$signatures)
+```
+
+```{r}
+extract_all_prob("T[C>A]T", "MSS_6", nmf.res)
+```
+
+#Simulating data for which the process behind each mutation is known
+
+```{r}
+load_old_mutational_matrix<- function(filename,mut.order="supplied_results/mut_sig.order.txt") {
+
+  mutational.signature = read_tsv(filename)
+  mut_mat = read_tsv(mut.order)
+
+  mut.join = mutational.signature %>%
+    inner_join(mut_mat)
+  
+  order.tri = unique(mut.join$ext.context)
+
+  mut.join = mut.join %>%
+    mutate(ext.context = factor (ext.context, levels = order.tri)) %>%
+    select(ext.context,prob)
+  
+  mut.matrix=as.matrix(sapply(mut.join[,2:ncol(mut.join)], as.numeric))  
+  rownames(mut.matrix) = mut.join$ext.context
+ 
+  return (t(mut.matrix)[,1:96])
+}
+
+#load ffpe signature
+ffpe.signature <-  load_old_mutational_matrix("supplied_results/ffpe.signature.txt")
+ffpe.signature.matrix <- as.matrix(ffpe.signature)
+```
+
+```{r}
+#create ffpe sample vector of 1000 mutations
+ffpe.sample.vector <- create_signature_sample_vector(ffpe.signature.matrix, 1000)
+ffpe.sample.vector
+signature_cosine_similarity(ffpe.sample.vector, ffpe.signature.matrix)
+```
+
+```{r}
+#create sample matrix to match ffpe signature
+ffpe.sample.matrix <- create_signature_sample_matrix(ffpe.signature.matrix, 10000)
+ffpe.sample.matrix
+#calculate the cosine similarity between sample matrix and original ffpe matrix
+cos_sim_matrix(ffpe.sample.matrix, ffpe.signature.matrix)
+#plot original ffpe matrix
+plot_96_profile(ffpe.signature.matrix)
+#plot our ffpe sample matrix
+plot_96_profile(ffpe.sample.matrix)
+```
+
+
