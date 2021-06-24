@@ -3,6 +3,8 @@ title: "Friday Presentation Demonstration"
 author: "Audrey Mitchell, Marco Ruiz, Soua Yang"
 date: "6/23/2021"
 output: pdf_document
+editor_options: 
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
@@ -17,6 +19,7 @@ source("simulation.R")
 ```
 
 #Show Bayes function, explain inputs and outputs
+function(mutation, sample, nmf_res)
 
 #Testing our function by generating mutational profiles with varying proportions of distinct mutational signatures (Signature 18 and Signature 21) from the COSMIC library
 ```{r}
@@ -41,6 +44,8 @@ plot_96_profile(test_nmf$signatures)
 #set column and row names to names of signatures
 colnames(test_nmf$signatures) <- c("Signature 18", "Signature 21")
 rownames(test_nmf$contribution) <- c("Signature 18", "Signature 21")
+
+plot_96_profile(test_nmf$signatures)
 ```
 
 ```{r}
@@ -53,41 +58,40 @@ plot_contribution(test_nmf$contribution, test_nmf$signature, mode = "relative", 
 ```{r}
 #G[T>C]A mutation is the most common in Signature 21
 #269 times more likely in signature 21 than 18
-#Sample 6 is ~100% Signature 21
-extract_all_prob("G[T>C]A", 6, test_nmf)
-#Sample 5 is ~90% Signature 21
-extract_all_prob("G[T>C]A", 5, test_nmf)
-#Sample 4 is ~70% Signature 21
-extract_all_prob("G[T>C]A", 4, test_nmf)
-#Sample 4 is ~50% Signature 21
-extract_all_prob("G[T>C]A", 4, test_nmf)
-#Sample 3 is ~30% Signature 21
-extract_all_prob("G[T>C]A", 3, test_nmf)
-#Sample 2 is ~10% Signature 21
-extract_all_prob("G[T>C]A", 2, test_nmf)
-#Sample 1 is ~0% Signature 21
-extract_all_prob("G[T>C]A", 1, test_nmf)
+
+sample.number <- c(1, 2, 3, 4, 5, 6, 7)
+percent.sig21 <- c(0,10,30,50,70,90,100)
+sig18.prob <- vector(mode = "double")
+sig21.prob <- vector(mode = "double")
+
+for (i in 1:7){
+  probs <- extract_all_prob("G[T>C]A", i, test_nmf)
+  sig18.prob[[i]]<- probs[1][[1]]
+  sig21.prob[[i]]<- probs[2][[1]]
+}
+
+x <- data.frame(sample.number, percent.sig21, sig18.prob, sig21.prob)
+colnames(x) <- c("Sample", "Percent Signature 21", "Signature 18 Posterior Probability", "Signature 21 Posterior Probability")
+view(x)
 ```
 
 ## Proportions should lean in favor for signature 18 and decrease with its sample size
 
 ```{r}
-#G[C>A]A mutation is the most common in Signature 18
-#1287 times more likely in signature 18 than 21
-#Sample 1 is ~100% Signature 18
-extract_all_prob("G[C>A]A", 1, test_nmf)
-#Sample 2 is ~90% Signature 18
-extract_all_prob("G[C>A]A", 2, test_nmf)
-#Sample 3 is ~70% Signature 18
-extract_all_prob("G[C>A]A", 3, test_nmf)
-#Sample 3 is ~50% Signature 18
-extract_all_prob("G[C>A]A", 3, test_nmf)
-#Sample 4 is ~30% Signature 18
-extract_all_prob("G[C>A]A", 4, test_nmf)
-#Sample 5 is ~10% Signature 18
-extract_all_prob("G[C>A]A", 5, test_nmf)
-#Sample 6 is ~0% Signature 18
-extract_all_prob("G[C>A]A", 6, test_nmf)
+sample.number2 <- c(1, 2, 3, 4, 5, 6, 7)
+percent.sig21.2 <- c(0,10,30,50,70,90,100)
+sig18.prob2 <- vector(mode = "double")
+sig21.prob2 <- vector(mode = "double")
+
+for (i in 1:7){
+  probs <- extract_all_prob("G[C>A]A", i, test_nmf)
+  sig18.prob2[[i]]<- probs[1][[1]]
+  sig21.prob2[[i]]<- probs[2][[1]]
+}
+
+y <- data.frame(sample.number2, percent.sig21.2, sig18.prob2, sig21.prob2)
+colnames(y) <- c("Sample", "Percent Signature 21", "Signature 18 Posterior Probability", "Signature 21 Posterior Probability")
+view(y)
 ```
 
 ## Probabilities should almost reflect contribution proportions
@@ -95,9 +99,9 @@ extract_all_prob("G[C>A]A", 6, test_nmf)
 ```{r}
 #low levels of C[C>T]G mutations in both signatures
 #Sample 3 is 90% Signature 18 and 10% Signature 21
-extract_all_prob("T[C>T]G", 3, test_nmf)
+extract_all_prob("T[C>T]G", 2, test_nmf)
 #Sample 4 is 90% Signature 21 and 10% Signature 18
-extract_all_prob("T[C>T]G", 4, test_nmf)
+extract_all_prob("T[C>T]G", 6, test_nmf)
 ```
 
 #Example applying our function to real data
@@ -147,6 +151,8 @@ load_cosmic_matrix<- function(mut.order="supplied_results/mut_sig.order.txt") {
   return(cancer_signatures)
 }
 
+cosmic.sigs <- load_cosmic_matrix()
+
 mapping.stats <- read_tsv("supplied_results/master_statistics_table.txt") %>%
   select(sample.name,tumor.status,stat.Total_Reads)
 
@@ -186,12 +192,23 @@ plot_96_profile(nmf.res$signatures)
 ```
 
 ```{r}
+#plot_contribution(nmf.res$contribution, nmf.res$signature, mode = "relative", coord_flip = TRUE)
+```
+
+```{r}
+#T[C>A]T is one of the peaks of the POLE mutational signature, MSS_6 is a sample with a high proportion of POLE mutations
 extract_all_prob("T[C>A]T", "MSS_6", nmf.res)
+```
+
+```{r}
+#G[C>T]T is a mutation that is present in all 4 mutational signatures, MSI_MLH1HM_15 is a sample with contributions from all 4
+extract_all_prob("G[C>T]T", "MSI_MLH1HM_15", nmf.res)
 ```
 
 #Simulating data for which the process behind each mutation is known
 
 ```{r}
+#function to load ffpe signature
 load_old_mutational_matrix<- function(filename,mut.order="supplied_results/mut_sig.order.txt") {
 
   mutational.signature = read_tsv(filename)
@@ -219,14 +236,14 @@ ffpe.signature.matrix <- as.matrix(ffpe.signature)
 
 ```{r}
 #create ffpe sample vector of 1000 mutations
-ffpe.sample.vector <- create_signature_sample_vector(ffpe.signature.matrix, 1000)
+ffpe.sample.vector <- create_signature_sample_vector(ffpe.signature.matrix, 100)
 ffpe.sample.vector
 signature_cosine_similarity(ffpe.sample.vector, ffpe.signature.matrix)
 ```
 
 ```{r}
 #create sample matrix to match ffpe signature
-ffpe.sample.matrix <- create_signature_sample_matrix(ffpe.signature.matrix, 10000)
+ffpe.sample.matrix <- create_signature_sample_matrix(ffpe.signature.matrix, 100)
 ffpe.sample.matrix
 #calculate the cosine similarity between sample matrix and original ffpe matrix
 cos_sim_matrix(ffpe.sample.matrix, ffpe.signature.matrix)
@@ -236,4 +253,15 @@ plot_96_profile(ffpe.signature.matrix)
 plot_96_profile(ffpe.sample.matrix)
 ```
 
+```{r}
+cosmic.sig6 <- as.matrix(cosmic.sigs[, 6])
+sample.sig6 <- create_signature_sample_vector(cosmic.sig6, 200)
+
+ffpe.20mutations <- create_signature_sample_vector(ffpe.signature.matrix, 20)
+
+classification.df <- get_classification_df(list(sample.sig6, sample.ffpe), c("MMR","FFPE"), list(cosmic.sig6, ffpe.sig))
+
+#view(classification.df)
+mean(classification.df$misclassification)
+```
 
