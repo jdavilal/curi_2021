@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "Testing Success of Bayes Function on Varying COSMIC Signatures"
 author: "Audrey Mitchell"
 date: "6/28/2021"
 output: html_document
@@ -103,10 +103,19 @@ colnames(cos.sim.misclass.data) <- c("signature", "cosine_similarity", "average_
 ```
 
 ```{r}
+ggplot(data = cos.sim.misclass.data, aes(y = average_misclassification, x = signature))+
+  geom_boxplot()
+```
+
+
+```{r}
 ggplot(cos.sim.misclass.data, aes(x = cosine_similarity, y = average_misclassification))+
   geom_point()+
-  geom_smooth()+
-  labs(title = "Average misclassification rate vs. cosine similarity to FFPE", x = "Cosine similarity of COSMIC signature to FFPE signature", y = "Average misclassification rate (10 iterations)")
+  geom_smooth(method = "lm")+
+  labs(title = "Average misclassification rate vs. cosine similarity to FFPE", x = "Cosine similarity of COSMIC signature to FFPE signature", y = "Average misclassification rate (10 iterations)")+
+  scale_x_log10()
+  #label outliars on plot
+  #geom_label(aes(signature))
 ```
 
 ```{r}
@@ -150,14 +159,14 @@ plot_bayes_roc <- function(cosmic_sig_matrix, cosmic_sig_name, cosmic_mutation_c
 ```
 #MMR (Signature 6, cos similarity to ffpe = )
 ```{r}
-plot_bayes_roc(cosmic.6, "MMR", 180, 20, 200)
+plot_bayes_roc(cosmic.6, "MMR", 100, 100, 200)
 ```
 
 ##COSMIC signature SBS17b (minimum cosine similarity to FFPE signature: 0.00206)
 
 ```{r}
 cosmic.17b <- as.matrix(cosmic.signatures[,"SBS17b"])
-plot_bayes_roc(cosmic.17b, "SBS17b", 180, 20, 200)
+plot_bayes_roc(cosmic.17b, "SBS17b", 100, 100, 200)
 ```
 
 
@@ -186,5 +195,5 @@ plot_bayes_roc(cosmic.44, "SBS44", 180, 20, 200)
 
 ```{r}
 cosmic.30 <- as.matrix(cosmic.signatures[,"SBS30"])
-plot_bayes_roc(cosmic.30, "SBS30", 180, 20, 200)
+plot_bayes_roc(cosmic.30, "SBS30", 100, 100, 200)
 ```
