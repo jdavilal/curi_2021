@@ -3,6 +3,9 @@
 ##reference=file:///hpc/cog_bioinf/GENOMES/Homo_sapiens.GRCh37.GATK.illumina/Homo_sapiens.GRCh37.GATK.illumina.fasta
 ##source=SelectVariants
 ##FILTER=All filters passed
+##INFO=<ID=SOMATIC,Number=0,Type=Flag,Description="Indicates if record is a somatic mutation">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype Quality">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##contig=<ID=1,length=249250621,assembly="hg19">
 ##contig=<ID=2,length=243199373,assembly="hg19">
 ##contig=<ID=3,length=198022430,assembly="hg19">
