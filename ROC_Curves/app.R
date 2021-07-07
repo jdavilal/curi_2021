@@ -78,7 +78,7 @@ server <- function(input, output) {
     cosmic_sig_name <- input$signature
   })
 
-  cosmic.signature <- as.matrix(cosmic.v3[,cosmic_sig_name])
+  cosmic.signature <- reactive(as.matrix(cosmic.v3[,cosmic_sig_name()]))
   rownames(cosmic.signature) <- mutations
   
   ffpe.mutation.number <- reactive({
@@ -117,6 +117,7 @@ server <- function(input, output) {
           avg="threshold")
      p
    })
+
 }
 
 # Run the application 

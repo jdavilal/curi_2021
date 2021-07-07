@@ -1,0 +1,199 @@
+---
+title: "Plots"
+author: "Audrey Mitchell"
+date: "6/30/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(NMF)
+library(tidyverse)
+library(ROCR)
+source("bayes_function.R")
+source("get_classification_df.R")
+```
+
+```{r}
+#load FFPE signature as a matrix
+
+##Function to load FFPE signature
+load_old_mutational_matrix<- function(filename,mut.order="supplied_results/mut_sig.order.txt") {
+
+  mutational.signature = read_tsv(filename)
+  mut_mat = read_tsv(mut.order)
+
+  mut.join = mutational.signature %>%
+    inner_join(mut_mat)
+  
+  order.tri = unique(mut.join$ext.context)
+
+  mut.join = mut.join %>%
+    mutate(ext.context = factor (ext.context, levels = order.tri)) %>%
+    select(ext.context,prob)
+  
+  mut.matrix=as.matrix(sapply(mut.join[,2:ncol(mut.join)], as.numeric))  
+  rownames(mut.matrix) = mut.join$ext.context
+ 
+  return (t(mut.matrix)[,1:96])
+}
+
+ffpe.signature <- as.matrix(load_old_mutational_matrix("supplied_results/ffpe.signature.txt"))
+```
+
+```{r}
+#create vector of the 96 mutation types
+mutations <- rownames(ffpe.signature) 
+```
+
+```{r}
+#Load COSMIC signatures (version 3)
+cosmic.signatures <- get_known_signatures()
+
+#get MMR signature (SBS6)
+cosmic.6 <- as.matrix(cosmic.signatures[,"SBS6"])
+rownames(cosmic.6) <- mutations
+```
+
+```{r}
+mmr.sample <-create_signature_sample_vector(cosmic.6, 50)
+
+ffpe.sample <- create_signature_sample_vector(ffpe.signature, 50)
+
+class.df <- get_classification_df(list(mmr.sample, ffpe.sample), c("MMR", "FFPE"), list(cosmic.6, ffpe.signature))
+```
+
+```{r}
+class.df2 <- class.df %>%
+  mutate(mmr.indicator = ifelse(truth == "MMR", 1, 0))
+```
+
+```{r}
+predictions <- class.df2$MMR
+labels <- class.df2$mmr.indicator
+pred <- prediction(predictions, labels)
+pred
+```
+
+```{r}
+perf <- performance(pred, "tpr", "fpr")
+perf
+```
+
+```{r}
+plot(perf,
+     avg="threshold")
+```
+
+```{r}
+auc.perf = performance(pred, measure = "auc")
+auc.perf@y.values[[1]][1]
+```
+
+#Plotting Reconstructed Profiles
+- Create a mutational profile without FFPE -> plot mutational profile
+- Add FFPE -> plot mutational profile
+- Run get_classification_df() function on the FFPE-added mutational profile
+- Filter out all the mutations that our function classifies as FFPE (Pr(FFPE) > .5)
+- Calculate cosine similarity between original mutational profile and reconstructed
+
+##Create a mutational profile without FFPE
+```{r}
+#load COSMIC v3 
+cosmic.v3 <- get_known_signatures(muttype = "snv")
+
+#create POLE signature matrix
+pole.signature <- as.matrix(cosmic.v3[,"SBS10b"])
+rownames(pole.signature) <- mutations
+
+#create POLE sample vector
+pole.sample.vector <- create_signature_sample_vector(pole.signature, 100)
+
+#create MMR signature matrix
+mmr.signature <- as.matrix(cosmic.v3[,"SBS6"])
+rownames(mmr.signature) <- mutations
+
+#create MMR sample vector
+mmr.sample.vector <- create_signature_sample_vector(mmr.signature, 100)
+
+#Combine POLE and MMR vector
+sample.vector <- c(pole.sample.vector, mmr.sample.vector)
+
+#transform sample.vector into a matrix of probabilities
+tab <- table(sample.vector)/sum(table(sample.vector))
+##converts table of probabilities to a data frame and defines column names
+sample.probs.df <- data.frame(tab)
+colnames(sample.probs.df) <- c("mutations", "frequencies")
+
+#defines a function that joins two data frames and replaces NA with 0
+left_join_NA <- function(x, y, by) {
+  left_join(x = x, y = y, by = by) %>% 
+  mutate_each(funs(replace(., which(is.na(.)), 0)))
+}
+
+#creates a data.frame of mutation types to join with sample probabilities
+df <- data.frame(mutations)
+
+#joins together sample probabilities with data frame of mutation types so that all 96 mutation types are included
+sample.df <- left_join_NA(df, sample.probs.df, by = "mutations")
+
+#Add pseudocount to column of probabilities 
+pole.mmr.matrix<- as.matrix(sample.df$frequencies) + 0.0001
+rownames(pole.mmr.matrix)= mutations
+
+plot_96_profile(pole.mmr.matrix)
+```
+
+#Add FFPE to the sample
+```{r}
+ffpe.sample.vector <- create_signature_sample_vector(ffpe.signature, 50)
+
+new.sample.vector <- c(sample.vector, ffpe.sample.vector)
+
+#transform sample.vector into a matrix of probabilities
+tab <- table(new.sample.vector)/sum(table(new.sample.vector))
+##converts table of probabilities to a data frame and defines column names
+new.sample.probs.df <- data.frame(tab)
+colnames(new.sample.probs.df) <- c("mutations", "frequencies")
+#joins together sample probabilities with data frame of mutation types so that all 96 mutation types are included
+new.sample.df <- left_join_NA(df, new.sample.probs.df, by = "mutations")
+
+#Add pseudocount to column of probabilities 
+pole.mmr.ffpe.matrix<- as.matrix(new.sample.df$frequencies) + 0.0001
+rownames(pole.mmr.ffpe.matrix)= mutations
+
+plot_96_profile(pole.mmr.ffpe.matrix)
+```
+
+##Run classifier function on the FFPE-added sample, remove FFPE mutations
+```{r}
+classification.df <- get_classification_df(list(pole.sample.vector, mmr.sample.vector, ffpe.sample.vector), c("POLE", "MMR", "FFPE"), list(pole.signature, mmr.signature, ffpe.signature))
+
+ffpe.removed <- classification.df %>%
+  filter(classify != "FFPE")
+
+reconstructed.vector <- ffpe.removed$mutations
+```
+
+```{r}
+#transform sample.vector into a matrix of probabilities
+tab <- table(reconstructed.vector)/sum(table(reconstructed.vector))
+##converts table of probabilities to a data frame and defines column names
+reconstructed.probs.df <- data.frame(tab)
+colnames(reconstructed.probs.df) <- c("mutations", "frequencies")
+#joins together sample probabilities with data frame of mutation types so that all 96 mutation types are included
+reconstructed.df <- left_join_NA(df, reconstructed.probs.df, by = "mutations")
+
+#Add pseudocount to column of probabilities 
+reconstructed.matrix<- as.matrix(reconstructed.df$frequencies) + 0.0001
+rownames(reconstructed.matrix)= mutations
+```
+
+```{r}
+plot_96_profile(reconstructed.matrix)
+```
+
+```{r}
+cos_sim_matrix(pole.mmr.matrix, reconstructed.matrix)
+```
+
