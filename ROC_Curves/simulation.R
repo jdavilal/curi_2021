@@ -67,6 +67,21 @@ create_signature_sample_vector <- function(signature.matrix, number.of.mutations
   return(signature.sample)
 }
 
+create_signature_sample_vector_seed <- function(signature.matrix, number.of.mutations){
+  #creates a vector of mutation types
+  mutations <- rownames(signature.matrix)
+  #creates a vector of probabilities of each mutation type
+  probabilities = as.vector(signature.matrix[,1])
+  
+  
+  #creates sample of desired number of total mutations to match the distribution of mutations in the signature
+  set.seed(1)
+  signature.sample = sample(mutations, size = number.of.mutations, replace = TRUE, prob = probabilities)
+  
+  #returns a vector with length = number.of.mutations, each element is a mutation type (string)
+  return(signature.sample)
+}
+
 #Creating sample to match signature distribution (matrix of probabilities)
 create_signature_sample_matrix <- function(signature.matrix, number.of.mutations){
   #creates a vector of mutation types

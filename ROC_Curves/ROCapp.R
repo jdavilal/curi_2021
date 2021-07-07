@@ -54,7 +54,10 @@ ui <- fluidPage(
       
       # Show a plot of the generated distribution
       mainPanel(
-         plotOutput("plot")
+         tabsetPanel(type = "tabs",
+                     tabPanel("ROC Curve", plotOutput("rocplot"), textOutput("text")),
+                     tabPanel("Reconstructed Profile", plotOutput("reconplot"))
+         )
       )
    )
 )
@@ -67,9 +70,13 @@ server <- function(input,output) {
                                                         input$proportion_ffpe))
   
   
-  output$plot <- renderPlot({
-    p <- plot(performance.object(), avg = "threshold")
+  output$rocplot <- renderPlot({
+    p <- plot(performance.object()[[1]], avg = "threshold")
     p
+  })
+  
+  output$text <- renderText({
+    paste0("Area Under Curve: ", performance.object()[[2]])
   })
 
 }

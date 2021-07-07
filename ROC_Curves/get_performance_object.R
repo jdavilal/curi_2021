@@ -5,8 +5,8 @@ get_performance_object <- function(cosmic_name, total_mut, prop_ffpe){
   cosmic.mut.no = total_mut-(total_mut*prop_ffpe)
   ffpe.mut.no = total_mut*prop_ffpe
   
-  cosmic.samp <- create_signature_sample_vector(cosmic.sig.mat, cosmic.mut.no)
-  ffpe.samp <- create_signature_sample_vector(ffpe.signature, ffpe.mut.no)
+  cosmic.samp <- create_signature_sample_vector_seed(cosmic.sig.mat, cosmic.mut.no)
+  ffpe.samp <- create_signature_sample_vector_seed(ffpe.signature, ffpe.mut.no)
   
   class.df.1 <- get_classification_df(list(cosmic.samp, ffpe.samp), c(cosmic_name, "FFPE"),
                                       list(cosmic.sig.mat, ffpe.signature))
@@ -16,7 +16,13 @@ get_performance_object <- function(cosmic_name, total_mut, prop_ffpe){
   
   pred <- prediction(class.df.2[3], class.df.2[7])
   perf <- performance(pred, "tpr", "fpr")
+  auc.perf <- performance(pred, measure = "auc")
+  auc.val <- auc.perf@y.values[[1]][1]
   
-  return(perf)
+  return(list(perf, auc.val))
 }
+
+
+
+
 
