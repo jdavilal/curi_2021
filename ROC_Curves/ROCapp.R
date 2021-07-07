@@ -11,6 +11,7 @@ library(shiny)
 library(tidyverse)
 library(MutationalPatterns)
 library(ROCR)
+library(gridExtra)
 source("bayes_function.R")
 source("simulation.R")
 source("get_classification_df.R")
@@ -55,8 +56,8 @@ ui <- fluidPage(
       # Show a plot of the generated distribution
       mainPanel(
          tabsetPanel(type = "tabs",
-                     tabPanel("ROC Curve", plotOutput("rocplot"), textOutput("text")),
-                     tabPanel("Reconstructed Profile", plotOutput("reconplot"))
+                     tabPanel("ROC Curve", plotOutput("rocplot"), textOutput("auc")),
+                     tabPanel("Reconstructed Profile", plotOutput("reconplot"), textOutput("cos_sim"))
          )
       )
    )
@@ -69,14 +70,36 @@ server <- function(input,output) {
   performance.object <- reactive(get_performance_object(input$signature, input$total_mutations,
                                                         input$proportion_ffpe))
   
+  profile.matrices <- reactive(get_profile_matrices(input$signature, input$total_mutations,
+                                           input$proportion_ffpe))
   
   output$rocplot <- renderPlot({
     p <- plot(performance.object()[[1]], avg = "threshold")
     p
   })
   
-  output$text <- renderText({
+  output$auc <- renderText({
     paste0("Area Under Curve: ", performance.object()[[2]])
+  })
+  
+  
+  output$reconplot <- renderPlot({
+    p1 <- plot_96_profile(profile.matrices()[[1]])+
+      labs(title = "True COSMIC Signature Profile")
+    #plot_96_profile for COSMIC sample vector
+    p2 <- plot_96_profile(profile.matrices()[[2]])+
+      labs(title = "Mutational Profile of COSMIC Sample")
+    #plot_96_profile for COSMIC and FFPE sample vectors
+    p3 <- plot_96_profile(profile.matrices()[[3]])+
+      labs(title = "Mutational Profile of COSMIC Sample with FFPE Added")
+    #plot_96_profile for reconstructed COSMIC profile
+    p4 <- plot_96_profile(profile.matrices()[[4]])+
+      labs(title = "Reconstructed Profile After Removing FFPE According to Bayesian Classifier")
+    grid.arrange(p1,p2,p3, p4)
+  })
+  
+  output$cos_sim <- renderText({
+    paste0("Cosine Similarity Between Original COSMIC Sample Profile and Reconstructed Profile: ", profile.matrices()[[5]])
   })
 
 }
