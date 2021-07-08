@@ -18,8 +18,24 @@ get_performance_object <- function(cosmic_name, total_mut, prop_ffpe){
   perf <- performance(pred, "tpr", "fpr")
   auc.perf <- performance(pred, measure = "auc")
   auc.val <- auc.perf@y.values[[1]][1]
+  acc.perf <- performance(pred, measure = "acc")
+  #find accuracy for 0.5 threshold/cutoff
+  #get line segment using threshold immediately before and after 0.5
+  low.ind = max(which(slot(acc.perf, "x.values")[[1]] >=0.5))
+  high.ind = min(which(slot(acc.perf, "x.values")[[1]] <=0.5))
+  #point slop formula of a line
+  slope = (slot(acc.perf, "y.values")[[1]][high.ind] - 
+             slot(acc.perf, "y.values")[[1]][low.ind])/
+    (slot(acc.perf, "x.values")[[1]][high.ind] - slot(acc.perf, "x.values")[[1]][low.ind])
+  acc.50 = slope*(0.5 - slot(acc.perf, "x.values")[[1]][low.ind]) + 
+    slot(acc.perf, "y.values")[[1]][low.ind]
+  #find the cutoff that makes the max accuracy
+  ind = which.max( slot(acc.perf, "y.values")[[1]] )
+  acc.max = slot(acc.perf, "y.values")[[1]][ind]
+  cutoff = slot(acc.perf, "x.values")[[1]][ind]
   
-  return(list(perf, auc.val))
+  return(list(rocplot = perf, auc = auc.val, accplot = acc.perf, 
+              acc50 = acc.50, acc.max = acc.max, cutoff = cutoff))
 }
 
 vector_to_matrix <- function(mutations.vector){

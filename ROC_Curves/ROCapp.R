@@ -39,7 +39,7 @@ ui <- fluidPage(
       sidebarPanel(
          sliderInput(inputId = "total_mutations",
                      label = "Total number of mutations:",
-                     min = 100,
+                     min = 10,
                      max = 1000,
                      value = 100),
          sliderInput(inputId = "proportion_ffpe",
@@ -57,7 +57,10 @@ ui <- fluidPage(
       mainPanel(
          tabsetPanel(type = "tabs",
                      tabPanel("ROC Curve", plotOutput("rocplot"), textOutput("auc")),
-                     tabPanel("Reconstructed Profile", plotOutput("reconplot"), textOutput("cos_sim"))
+                     tabPanel("Accuracy", plotOutput("accplot"), textOutput("acc50"),
+                              textOutput("accmax"), textOutput("cutoff")),
+                     tabPanel("Reconstructed Profile", plotOutput("reconplot"), 
+                              textOutput("cos_sim"))
          )
       )
    )
@@ -74,12 +77,12 @@ server <- function(input,output) {
                                            input$proportion_ffpe))
   
   output$rocplot <- renderPlot({
-    p <- plot(performance.object()[[1]], avg = "threshold")
-    p
+    plot(performance.object()[["rocplot"]], colorize=TRUE, print.cutoffs.at=0.5, 
+              text.adj=c(-0.2,1.7))
   })
   
   output$auc <- renderText({
-    paste0("Area Under Curve: ", performance.object()[[2]])
+    paste0("Area Under Curve: ", performance.object()[["auc"]])
   })
   
   
@@ -99,7 +102,27 @@ server <- function(input,output) {
   })
   
   output$cos_sim <- renderText({
-    paste0("Cosine Similarity Between Original COSMIC Sample Profile and Reconstructed Profile: ", profile.matrices()[[5]])
+    paste0("Cosine Similarity Between Original COSMIC Sample Profile and Reconstructed Profile: ", 
+           profile.matrices()[[5]])
+  })
+  
+  output$accplot <- renderPlot({
+    plot(performance.object()[["accplot"]])
+    points(0.5, performance.object()[["acc50"]])
+    text(0.5, performance.object()[["acc50"]]- 0.02, "0.5")
+  })
+  
+  output$acc50 <- renderText({
+    paste0("Accuracy at 50% threshold/cutoff: ", performance.object()[["acc50"]])
+  })
+  
+  output$accmax <- renderText({
+    paste0("Maximum accuracy: ", performance.object()[["acc.max"]])
+  })
+  
+  output$cutoff <- renderText({
+    paste0("Threshold/cutoff at which accuracy is maximized: ", 
+           performance.object()[["cutoff"]])
   })
 
 }
