@@ -1,0 +1,127 @@
+---
+title: "firevat_testing"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(FIREVAT)
+library(bedr)
+library(stringr)
+library(MutationalPatterns)
+
+source("../simulation.R")
+```
+
+```{r}
+cosmic.sigs <- get_known_signatures()
+cosmic.sig6 <- as.matrix(cosmic.sigs[,6])
+ffpe.sig <- as.matrix(load_old_mutational_matrix("../supplied_results/ffpe.signature.txt")) # Doesn't work
+
+df.sigs <- data.frame(GetPCAWGMutSigs()[1:3], cosmic.sigs, ffpe.sig)
+rownames(df.sigs) <- seq(1, 96)
+```
+
+```{r}
+# Output directory
+output.dir <- "./" # assign this path
+
+# VCF file
+sample.vcf.file <- system.file("extdata", "DCC_PCAWG_Cell_Lines_HCC1954.vcf", package = "FIREVAT")
+sample.vcf.file <- "../sample3.vcf"
+sample.vcf.file <- "./short-example.vcf"
+sample.vcf.file <- "../sample-combined.vcf"
+sample.vcf.file <- system.file("extdata", "intestine1-sample.vcf", package = "MutationalPatterns")
+
+# Configuration file
+config.file <- system.file("config", "PCAWG_DKFZ_Cell_Line_Filtering_Params.json", package = "FIREVAT")
+config.file <- "../custom_config.json"
+
+colnames(df.sigs)[4:length(colnames(df.sigs))]
+```
+
+```{r}
+run <- function(signature = "SBS6", default = 0) {
+  
+  if (default == 0) {
+    # Run FIREVAT
+    results <- RunFIREVAT(vcf.file = sample.vcf.file,
+                          vcf.file.genome = 'hg38', # for mouse variants: 'mm10'
+                          config.file = config.file,
+                          df.ref.mut.sigs = df.sigs,
+                          target.mut.sigs = c(signature, "ffpe.sig"),
+                          sequencing.artifact.mut.sigs = c("ffpe.sig"),
+                          output.dir = output.dir,
+                          objective.fn = Default.Obj.Fn,
+                          num.cores = 2,
+                          ga.pop.size = 100,
+                          ga.max.iter = 5,
+                          ga.run = 5,
+                          perform.strand.bias.analysis = FALSE,
+                          annotate = FALSE)
+  } else if (default == 1) {
+    # Run FIREVAT
+    results <- RunFIREVAT(vcf.file = sample.vcf.file,
+                          vcf.file.genome = 'hg19', # for mouse variants: 'mm10'
+                          config.file = config.file,
+                          df.ref.mut.sigs = GetPCAWGMutSigs(),
+                          target.mut.sigs = GetPCAWGMutSigsNames(),
+                          sequencing.artifact.mut.sigs = PCAWG.All.Sequencing.Artifact.Signatures,
+                          output.dir = output.dir,
+                          objective.fn = Default.Obj.Fn,
+                          num.cores = 2,
+                          ga.pop.size = 100,
+                          ga.max.iter = 5,
+                          ga.run = 5,
+                          perform.strand.bias.analysis = FALSE,
+                          annotate = FALSE)
+  }
+}
+```
+
+```{r}
+run("SBS4")
+```
+
+
+```{r}
+GetPCAWGMutSigs()
+GetPCAWGMutSigsNames()
+PCAWG.All.Sequencing.Artifact.Signatures
+```
+
+```{r}
+vcf.obj <- ReadVCF(sample.vcf.file)
+
+mutalisk.results <- RunMutalisk(vcf.obj = vcf.obj,
+                                df.ref.mut.sigs = df.sigs,
+                                target.mut.sigs = c("SBS6", "ffpe.sig"),
+                                n.sample = 2,
+                                n.iter = 10)
+
+g <- PlotMutaliskResults(
+    mutalisk.results = mutalisk.results,
+    signatures = unique(mutalisk.results$identified.mut.sigs),
+    df.ref.sigs.groups.colors = GetPCAWGMutSigsEtiologiesColors(),
+    trinuc.max.y = 1,
+    trinuc.min.y = 0,
+    mut.type.max.y = 1,
+    title = "")
+
+print(g$f1)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -15,6 +15,15 @@ source("bayes_function.R")
 source("simulation.R")
 source("get_classification_df.R")
 
+ffpe.signature <- as.matrix(load_old_mutational_matrix("supplied_results/ffpe.signature.txt"))
+
+#create a vector of the 96 snv mutation types:
+##this is used to assign rownames to COSMIC signature matrices later on
+mutations <- rownames(ffpe.signature)
+
+#load COSMIC version 3 signatures
+cosmic.v3 <- get_known_signatures()
+
 # Define UI for application that draws a histogram
 ui <- fluidPage(
    
@@ -24,30 +33,31 @@ ui <- fluidPage(
    # Sidebar with a slider input for number of bins 
    sidebarLayout(
       sidebarPanel(
-         sliderInput("total_mutations",
-                     "Total number of mutations:",
+         sliderInput(inputId = "total_mutations",
+                     label = "Total number of mutations:",
                      min = 100,
                      max = 1000,
                      value = 100),
-         sliderInput("proportion_ffpe",
-                     "Proportion of total mutations from the FFPE signature",
+         sliderInput(inputId = "proportion_ffpe",
+                     label = "Proportion of total mutations from the FFPE signature",
                      min = 0,
                      max = 1,
                      value = 0.5),
          selectInput(inputId = "signature",
-                     label = "COSMIC Signature:",
-                     choices = c ("SBS1", "SBS2", "SBS3","SBS4", "SBS5", "SBS6",
-                                  "SBS7a", "SBS7b", "SBS7c", "SBS7d", "SBS8",
-                                  "SBS9", "SBS10a", "SBS10b", "SBS10c", "SBS10d",
-                                  "SBS11", "SBS12", "SBS13", "SBS14", "SBS15",
-                                  "SBS16", "SBS17a", "SBS17b", "SBS18", "SBS19",
-                                  "SBS20", "SBS21", "SBS22", "SBS23", "SBS24", "SBS25",
-                                  "SBS26", "SBS28", "SBS29", "SBS30", "SBS31",
-                                  "SBS32", "SBS33", "SBS34", "SBS35", "SBS36", "SBS37",
-                                  "SBS38", "SBS39", "SBS40", "SBS41", "SBS42", "SBS44",
-                                  "SBS84", "SBS85", "SBS86", "SBS87", "SBS88", "SBS89",
-                                  "SBS90", "SBS91", "SBS92", "SBS93", "SBS94"),
-                     selected = "SBS1")
+                      label = "COSMIC Signature:",
+                      choices = c ("SBS1" = 1, "SBS2" = 2, "SBS3" = 3,"SBS4" = 4, "SBS5" = 5, "SBS6" = 6,
+                                   "SBS7a" = 7, "SBS7b" = 8, "SBS7c" = 9, "SBS7d" = 10, "SBS8" = 11,
+                                   "SBS9" = 12, "SBS10a" = 13, "SBS10b" = 14, "SBS10c" = 15, "SBS10d" = 16,
+                                   "SBS11" = 17, "SBS12" = 18, "SBS13" = 19, "SBS14" = 20, "SBS15" = 21,
+                                   "SBS16" = 22, "SBS17a" = 23, "SBS17b" = 24, "SBS18" = 25, "SBS19" = 26,
+                                   "SBS20" = 27, "SBS21" = 28, "SBS22" = 29, "SBS23"= 30 , "SBS24" =31, 
+                                   "SBS25" = 32,"SBS26" = 33, "SBS28" = 34, "SBS29" = 35, "SBS30" = 36, 
+                                   "SBS31" = 37, "SBS32" = 38, "SBS33" = 39, "SBS34" = 40, "SBS35" = 41, 
+                                   "SBS36" = 42, "SBS37" = 43, "SBS38" = 44, "SBS39" = 45, "SBS40" = 46, 
+                                   "SBS41" = 47, "SBS42" = 48, "SBS44" = 49, "SBS84" = 50, "SBS85" = 51,
+                                   "SBS86" = 52, "SBS87" = 53, "SBS88" = 54, "SBS89" = 55,
+                                   "SBS90" = 56, "SBS91" = 57, "SBS92" = 58, "SBS93" = 59, "SBS94" = 60),
+                      selected = "SBS1")
       ),
       
       # Show a plot of the generated distribution
@@ -60,28 +70,15 @@ ui <- fluidPage(
 # Define server logic required to draw a histogram
 server <- function(input, output) {
   
-  ffpe.signature <- as.matrix(load_old_mutational_matrix("supplied_results/ffpe.signature.txt"))
-  
-  #create a vector of the 96 snv mutation types:
-  ##this is used to assign rownames to COSMIC signature matrices later on
-  mutations <- rownames(ffpe.signature)
-  
-  #load COSMIC version 3 signatures
-  cosmic.v3 <- get_known_signatures()
-  
   #extract signature of interest from the COSMIC v3 matrix
-  #cosmic.signature <- cosmic.v3[,str(input$signature)]
   #assign rownames to the signature matrix
-  #rownames(cosmic.signature) <- mutations
   
-  #cosmic_sig_name <- reactive({
-    #req(input$signature)
-    #cosmic_sig_name <- input$signature
-  #})
-  cosmic_sig_name <- reactive(input$signature)
-  
-  cosmic.signature1 <- cosmic.v3[,cosmic_sig_name]
-  cosmic.signature <- as.matrix(cosmic.signature1)
+  cosmic_sig_name <- reactive({
+    req(input$signature)
+    cosmic_sig_name <- input$signature
+  })
+
+  cosmic.signature <- reactive(as.matrix(cosmic.v3[,cosmic_sig_name()]))
   rownames(cosmic.signature) <- mutations
   
   ffpe.mutation.number <- reactive({
@@ -98,9 +95,7 @@ server <- function(input, output) {
   
   #create sample vectors for COSMIC and FFPE mutations
   cosmic.sample <- create_signature_sample_vector(cosmic.signature, cosmic.mutation.number)
-  #cosmic.sample <- create_signature_sample_vector(cosmic.signature, 50)
   ffpe.sample <- create_signature_sample_vector(ffpe.signature, ffpe.mutation.number)
-  #ffpe.sample <- create_signature_sample_vector(ffpe.signature, 50)
   
   
   class.df <- get_classification_df(list(cosmic.sample, ffpe.sample), c(cosmic_sig_name, "FFPE"),
@@ -122,6 +117,7 @@ server <- function(input, output) {
           avg="threshold")
      p
    })
+
 }
 
 # Run the application 

@@ -13,31 +13,10 @@ library(tidyverse)
 library(ROCR)
 source("bayes_function.R")
 source("get_classification_df.R")
+source("simulation.R")
 ```
 
 ```{r}
-#Load FFPE signature
-##Function to load FFPE signature
-load_old_mutational_matrix<- function(filename,mut.order="supplied_results/mut_sig.order.txt") {
-
-  mutational.signature = read_tsv(filename)
-  mut_mat = read_tsv(mut.order)
-
-  mut.join = mutational.signature %>%
-    inner_join(mut_mat)
-  
-  order.tri = unique(mut.join$ext.context)
-
-  mut.join = mut.join %>%
-    mutate(ext.context = factor (ext.context, levels = order.tri)) %>%
-    select(ext.context,prob)
-  
-  mut.matrix=as.matrix(sapply(mut.join[,2:ncol(mut.join)], as.numeric))  
-  rownames(mut.matrix) = mut.join$ext.context
- 
-  return (t(mut.matrix)[,1:96])
-}
-
 ffpe.signature <- as.matrix(load_old_mutational_matrix("supplied_results/ffpe.signature.txt"))
 ```
 
