@@ -9,35 +9,15 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 library(NMF)
 library(tidyverse)
+library(ggrepel)
 library(ROCR)
 source("bayes_function.R")
 source("get_classification_df.R")
+source("simulation.R")
 ```
 
 ```{r}
 #load FFPE signature as a matrix
-
-##Function to load FFPE signature
-load_old_mutational_matrix<- function(filename,mut.order="supplied_results/mut_sig.order.txt") {
-
-  mutational.signature = read_tsv(filename)
-  mut_mat = read_tsv(mut.order)
-
-  mut.join = mutational.signature %>%
-    inner_join(mut_mat)
-  
-  order.tri = unique(mut.join$ext.context)
-
-  mut.join = mut.join %>%
-    mutate(ext.context = factor (ext.context, levels = order.tri)) %>%
-    select(ext.context,prob)
-  
-  mut.matrix=as.matrix(sapply(mut.join[,2:ncol(mut.join)], as.numeric))  
-  rownames(mut.matrix) = mut.join$ext.context
- 
-  return (t(mut.matrix)[,1:96])
-}
-
 ffpe.signature <- as.matrix(load_old_mutational_matrix("supplied_results/ffpe.signature.txt"))
 ```
 
@@ -48,12 +28,14 @@ mutations <- rownames(ffpe.signature)
 
 ```{r}
 #Load COSMIC signatures (version 3)
-cosmic.signatures <- get_known_signatures()
+cosmic.signatures <- get_known_signatures(muttype = "snv")
 
 #get MMR signature (SBS6)
 cosmic.6 <- as.matrix(cosmic.signatures[,"SBS6"])
 rownames(cosmic.6) <- mutations
 ```
+
+#ROC Curve for Sample of 50 MMR mutations and 50 FFPE mutations
 
 ```{r}
 mmr.sample <-create_signature_sample_vector(cosmic.6, 50)
@@ -197,3 +179,95 @@ plot_96_profile(reconstructed.matrix)
 cos_sim_matrix(pole.mmr.matrix, reconstructed.matrix)
 ```
 
+#Scatterplot of misclassification rate vs. cosine similarity of COSMIC signature to FFPE signature
+
+```{r}
+#Create vector of the signature names
+signature.names <- colnames(cosmic.signatures)
+```
+
+```{r}
+#Create list of signature matrices with assigned rownames
+signature.matrix.list <- list()
+for (i in 1:60){
+  sig <- cosmic.signatures[,i]
+  sig.mat <- as.matrix(sig)
+  rownames(sig.mat) <- mutations
+  colnames(sig.mat) <- signature.names[i]
+  signature.matrix.list[[i]] <- sig.mat
+}
+```
+
+```{r}
+#outer for loop: loop through each COSMIC v3 signature
+average.misclassification.rates <- c()
+average.auc.values <- c()
+for (x in 1:60){
+  signature.misclass.vec <- c()
+  signature.auc.vec <- c()
+  #inner for loop: calculate misclassification rate 10x for each signature
+  for (y in 1:10){
+    #create a sample vector of 180 mutations for the COSMIC signature corresponding to number x
+    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],180)
+    #Create FFPE sample vector of 20 mutations
+    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 20)
+    classification.df <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[x],"FFPE"), list(signature.matrix.list[[x]], ffpe.signature))
+    misclassification.rate <- mean(classification.df$misclassification)
+    signature.misclass.vec[y] <- misclassification.rate
+    class.df.colnames <- colnames(classification.df)
+    sig.name <- class.df.colnames[3]
+    classification.df.2 <- classification.df %>%
+      mutate(signature.indicator = ifelse(classify == sig.name, 1, 0))
+    pred <- prediction(classification.df.2[3], classification.df.2$signature.indicator)
+    auc.perf <- performance(pred, measure = "auc")
+    auc.value <- auc.perf@y.values[[1]][1]
+    signature.auc.vec[y] <- auc.value
+  }
+  average.signature.misclass <- mean(signature.misclass.vec)
+  average.misclassification.rates[x] <- average.signature.misclass
+  average.signature.auc <- mean(signature.auc.vec)
+  average.auc.values[x] <- average.signature.auc
+}
+```
+
+```{r}
+#Example of loop for SBS5: all mutations are classified as SBS5 -> problem with ROCR
+sample.vec <- create_signature_sample_vector(signature.matrix.list[[5]],180)
+    #Create FFPE sample vector of 20 mutations
+ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 20)
+classification.df <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[5],"FFPE"), list(signature.matrix.list[[5]], ffpe.signature))
+misclassification.rate <- mean(classification.df$misclassification)
+signature.misclass.vec[10] <- misclassification.rate
+class.df.colnames <- colnames(classification.df)
+sig.name <- class.df.colnames[3]
+classification.df.2 <- classification.df %>%
+  mutate(signature.indicator = ifelse(classify == sig.name, 1, 0))
+pred <- prediction(classification.df.2[3], classification.df.2$signature.indicator)
+    auc.perf <- performance(pred, measure = "auc")
+    auc.value <- auc.perf@y.values[[1]][1]
+    signature.auc.vec[10] <- auc.value
+```
+
+
+```{r}
+#create vector of cosine similarities to the FFPE signature
+ffpe.cosmic.cos.sims <- c()
+for (i in 1:60){
+  cos.sim <- cos_sim_matrix(signature.matrix.list[[i]], ffpe.signature)
+  ffpe.cosmic.cos.sims[i] <- cos.sim[1,1]
+}
+```
+
+```{r}
+cos.sim.misclass.data <- data.frame(signature.names, ffpe.cosmic.cos.sims, average.misclassification.rates)
+colnames(cos.sim.misclass.data) <- c("signature", "cosine_similarity", "average_misclassification")
+```
+
+```{r}
+ggplot(cos.sim.misclass.data, aes(x = cosine_similarity, y = average_misclassification))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  labs(title = "Average misclassification rate vs. cosine similarity to FFPE", x = "Cosine similarity of COSMIC signature to FFPE signature", y = "Average misclassification rate (10 iterations)")+
+  scale_x_log10()+
+  geom_label_repel(aes(label = signature), max.overlaps = 7, label.size =   0.1)
+```
