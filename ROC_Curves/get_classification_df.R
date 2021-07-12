@@ -97,7 +97,12 @@ get_classification_df <- function(samples, sig.names, signatures) {
     #store posterior probabilities in each row for all signatures
     probabilities <- df.final[row,3:(2+length(samples))]
     #finds the index for the maximum probability and retrieves name of signature that is the max
-    classifier <- colnames(probabilities)[which.max(probabilities[1,])]
+    if(max(is.na(probabilities)) == 0){
+      classifier <- colnames(probabilities)[which.max(probabilities[1,])]
+    }
+    else{
+      classifier <- NA
+    }    
     #each element is signature name (string) that has the maximum posterior probability
     classify[row]<- classifier
   }
