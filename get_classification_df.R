@@ -97,7 +97,12 @@ get_classification_df <- function(samples, sig.names, signatures) {
     #store posterior probabilities in each row for all signatures
     probabilities <- df.final[row,3:(2+length(samples))]
     #finds the index for the maximum probability and retrieves name of signature that is the max
-    classifier <- colnames(probabilities)[which.max(probabilities[1,])]
+    if(max(is.na(probabilities)) == 0){
+      classifier <- colnames(probabilities)[which.max(probabilities[1,])]
+    }
+    else{
+      classifier <- NA
+    }
     #each element is signature name (string) that has the maximum posterior probability
     classify[row]<- classifier
   }
@@ -109,6 +114,11 @@ get_classification_df <- function(samples, sig.names, signatures) {
   df.final <- df.final %>%
     #misclassification when the source string does not match the Bayesian classifier
     mutate(misclassification = ifelse(classify != truth, 1, 0))
+  
+  #remove mutations that should not have been randomly generated
+  df.final <- df.final %>%
+    #mutations that don't appear in a signature are evaluated as NA in posteriors & classification
+    drop_na()
   
 
   return (df.final)
