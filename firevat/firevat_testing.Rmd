@@ -6,38 +6,19 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(FIREVAT)
+library(tidyverse)
 library(bedr)
 library(stringr)
 library(MutationalPatterns)
+library(BSgenome)
+ref_genome <- "BSgenome.Hsapiens.UCSC.hg19"
+library(ref_genome, character.only = TRUE)
+library(ROCR)
 
 source("../simulation.R")
-```
+source("../sample_conversions.R")
 
-```{r}
-cosmic.sigs <- get_known_signatures()
-cosmic.sig6 <- as.matrix(cosmic.sigs[,6])
-ffpe.sig <- as.matrix(load_old_mutational_matrix("../supplied_results/ffpe.signature.txt")) # Doesn't work
-
-df.sigs <- data.frame(GetPCAWGMutSigs()[1:3], cosmic.sigs, ffpe.sig)
-rownames(df.sigs) <- seq(1, 96)
-```
-
-```{r}
-# Output directory
-output.dir <- "./" # assign this path
-
-# VCF file
-sample.vcf.file <- system.file("extdata", "DCC_PCAWG_Cell_Lines_HCC1954.vcf", package = "FIREVAT")
-sample.vcf.file <- "../sample3.vcf"
-sample.vcf.file <- "./short-example.vcf"
-sample.vcf.file <- "../sample-combined.vcf"
-sample.vcf.file <- system.file("extdata", "intestine1-sample.vcf", package = "MutationalPatterns")
-
-# Configuration file
-config.file <- system.file("config", "PCAWG_DKFZ_Cell_Line_Filtering_Params.json", package = "FIREVAT")
-config.file <- "../custom_config.json"
-
-colnames(df.sigs)[4:length(colnames(df.sigs))]
+seq <- getSeq(Hsapiens, "chr1")
 ```
 
 ```{r}
@@ -77,42 +58,177 @@ run <- function(signature = "SBS6", default = 0) {
                           annotate = FALSE)
   }
 }
+
+get_roc_point <- function(df) {
+  tp <- df %>%
+    filter(truth == classify, classify != "FFPE") %>%
+    count()
+  tp <- tp$n
+  
+  tn <- df %>%
+    filter(truth == classify, classify == "FFPE") %>%
+    count()
+  tn <- tn$n
+  
+  fp <- df %>%
+    filter(truth != classify, classify != "FFPE") %>%
+    count()
+  fp <- fp$n
+  
+  fn <- df %>%
+    filter(truth != classify, classify == "FFPE") %>%
+    count()
+  fn <- fn$n
+  
+  tpr <- tp / (tp + fn)
+  fpr <- fp / (fp + tn)
+  
+  return(c(fpr, tpr))
+}
 ```
 
 ```{r}
+cosmic.sigs <- get_known_signatures()
+cosmic.sig6 <- as.matrix(cosmic.sigs[,6])
+cosmic.sig4 <- as.matrix(cosmic.sigs[,4])
+ffpe.sig <- as.matrix(load_old_mutational_matrix("../ROC_Curves/supplied_results/ffpe.signature.txt", "../supplied_results/mut_sig.order.txt")) # Doesn't work
+
+df.sigs <- data.frame(GetPCAWGMutSigs()[1:3], cosmic.sigs, ffpe.sig)
+rownames(df.sigs) <- seq(1, 96)
+```
+
+
+```{r}
+sample.sig6 <- create_signature_sample_vector(cosmic.sig6, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample1.df <- get_classification_df(list(sample.sig6, sample.ffpe), c("MMR", "FFPE"), list(cosmic.sig6, ffpe.sig))
+
+write_sample_to_vcf(sample1.df, "sample1.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample1.vcf"
+config.file <- "../custom_config.json"
+output.dir <- "./"
+
+run("SBS6")
+```
+
+```{r}
+sample1.firevat.df <- create_classify_df("sample1.vcf", seq)
+
+mean(sample1.firevat.df$misclassification)
+mean(sample1.df$misclassification)
+
+roc.point <- get_roc_point(sample1.firevat.df)
+get_roc_point(sample1.df)
+
+sample1.df <- sample1.df %>%
+  mutate(binaryTruth = ifelse(truth == "MMR", 1, 0))
+
+sample1.prediction <- prediction(sample1.df$MMR, sample1.df$binaryTruth)
+sample1.perf <- performance(sample1.prediction, "tpr", "fpr")
+plot(sample1.perf)
+points(x=roc.point[1], y=roc.point[2])
+```
+
+```{r}
+sample.sig6 <- create_signature_sample_vector(cosmic.sig6, 500)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 500)
+
+sample2.df <- get_classification_df(list(sample.sig6, sample.ffpe), c("MMR", "FFPE"), list(cosmic.sig6, ffpe.sig))
+
+write_sample_to_vcf(sample2.df, "sample2.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample2.vcf"
+config.file <- "../custom_config.json"
+output.dir <- "./"
+
+run("SBS6")
+```
+
+```{r}
+sample2.firevat.df <- create_classify_df("sample2.vcf", seq)
+
+mean(sample2.firevat.df$misclassification)
+mean(sample2.df$misclassification)
+
+roc.point <- get_roc_point(sample2.firevat.df)
+get_roc_point(sample2.df)
+
+sample2.df <- sample2.df %>%
+  mutate(binaryTruth = ifelse(truth == "MMR", 1, 0))
+
+sample2.prediction <- prediction(sample2.df$MMR, sample2.df$binaryTruth)
+sample2.perf <- performance(sample2.prediction, "tpr", "fpr")
+plot(sample2.perf)
+points(x=roc.point[1], y=roc.point[2])
+```
+
+```{r}
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample3.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("MMR", "FFPE"), list(cosmic.sig4, ffpe.sig))
+
+write_sample_to_vcf(sample3.df, "sample3.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample3.vcf"
+config.file <- "../custom_config.json"
+output.dir <- "./"
+
 run("SBS4")
 ```
 
-
 ```{r}
-GetPCAWGMutSigs()
-GetPCAWGMutSigsNames()
-PCAWG.All.Sequencing.Artifact.Signatures
+sample3.firevat.df <- create_classify_df("sample3.vcf", seq)
+
+mean(sample3.firevat.df$misclassification)
+mean(sample3.df$misclassification)
+
+roc.point <- get_roc_point(sample3.firevat.df)
+get_roc_point(sample3.df)
+
+sample3.df <- sample3.df %>%
+  mutate(binaryTruth = ifelse(truth == "MMR", 1, 0))
+
+sample3.prediction <- prediction(sample3.df$MMR, sample3.df$binaryTruth)
+sample3.perf <- performance(sample3.prediction, "tpr", "fpr")
+plot(sample3.perf)
+points(x=roc.point[1], y=roc.point[2])
 ```
 
 ```{r}
-vcf.obj <- ReadVCF(sample.vcf.file)
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 500)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 500)
 
-mutalisk.results <- RunMutalisk(vcf.obj = vcf.obj,
-                                df.ref.mut.sigs = df.sigs,
-                                target.mut.sigs = c("SBS6", "ffpe.sig"),
-                                n.sample = 2,
-                                n.iter = 10)
+sample4.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("MMR", "FFPE"), list(cosmic.sig4, ffpe.sig))
 
-g <- PlotMutaliskResults(
-    mutalisk.results = mutalisk.results,
-    signatures = unique(mutalisk.results$identified.mut.sigs),
-    df.ref.sigs.groups.colors = GetPCAWGMutSigsEtiologiesColors(),
-    trinuc.max.y = 1,
-    trinuc.min.y = 0,
-    mut.type.max.y = 1,
-    title = "")
+write_sample_to_vcf(sample4.df, "sample4.vcf", Hsapiens, "chr1")
 
-print(g$f1)
+sample.vcf.file <- "sample4.vcf"
+config.file <- "../custom_config.json"
+output.dir <- "./"
 
+run("SBS4")
 ```
 
+```{r}
+sample4.firevat.df <- create_classify_df("sample4.vcf", seq)
 
+mean(sample4.firevat.df$misclassification)
+mean(sample4.df$misclassification)
+
+roc.point <- get_roc_point(sample4.firevat.df)
+get_roc_point(sample4.df)
+
+sample4.df <- sample4.df %>%
+  mutate(binaryTruth = ifelse(truth == "MMR", 1, 0))
+
+sample4.prediction <- prediction(sample4.df$MMR, sample4.df$binaryTruth)
+sample4.perf <- performance(sample4.prediction, "tpr", "fpr")
+plot(sample4.perf)
+points(x=roc.point[1], y=roc.point[2])
+```
 
 
 
