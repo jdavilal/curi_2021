@@ -1,0 +1,163 @@
+---
+title: "Abstract Plots"
+author: "Audrey Mitchell"
+date: "7/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(NMF)
+library(MutationalPatterns)
+library(tidyverse)
+library(ggrepel)
+library(ROCR)
+source("bayes_function.R")
+source("get_classification_df.R")
+source("simulation.R")
+```
+
+```{r}
+#load FFPE signature as a matrix
+ffpe.signature <- as.matrix(load_old_mutational_matrix("supplied_results/ffpe.signature.txt"))
+
+#create vector of the 96 mutation types
+mutations <- rownames(ffpe.signature) 
+
+#Load COSMIC signatures (version 3)
+cosmic.signatures <- get_known_signatures(muttype = "snv")
+
+#Create vector of the signature names
+signature.names <- colnames(cosmic.signatures)
+
+#Create list of signature matrices with assigned rownames
+signature.matrix.list <- list()
+for (i in 1:60){
+  sig <- cosmic.signatures[,i]
+  sig.mat <- as.matrix(sig)
+  rownames(sig.mat) <- mutations
+  colnames(sig.mat) <- signature.names[i]
+  signature.matrix.list[[i]] <- sig.mat
+}
+
+#create vector of cosine similarities to the FFPE signature
+ffpe.cosmic.cos.sims <- c()
+for (i in 1:60){
+  cos.sim <- cos_sim_matrix(signature.matrix.list[[i]], ffpe.signature)
+  ffpe.cosmic.cos.sims[i] <- cos.sim[1,1]
+}
+```
+
+#Scatterplot of Average AUC vs. Cosine Similarity to FFPE
+```{r}
+#outer for loop: loop through each COSMIC v3 signature
+average.auc.values <- c()
+for (x in 1:60){
+  signature.auc.vec <- c()
+  #inner for loop: calculate misclassification rate 10x for each signature
+  for (y in 1:10){
+    #create a sample vector of 100 mutations for the COSMIC signature corresponding to number x
+    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],100)
+    #Create FFPE sample vector of 100 mutations
+    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 100)
+    classification.df.1 <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[x],"FFPE"), list(signature.matrix.list[[x]], ffpe.signature))
+    class.df.colnames <- colnames(classification.df.1)
+    sig.name <- class.df.colnames[3]
+    classification.df.2 <- classification.df.1 %>%
+      mutate(signature.indicator = ifelse(truth == sig.name, 1, 0))
+    predictions <- classification.df.2[3]
+    labels <- classification.df.2$signature.indicator
+    pred <- prediction(predictions, labels)
+    auc.perf <- performance(pred, measure = "auc")
+    signature.auc.vec[y] <- auc.perf@y.values[[1]][1]
+  }
+  average.signature.auc <- mean(signature.auc.vec)
+  average.auc.values[x] <- average.signature.auc
+}
+```
+
+```{r}
+cos.sim.auc.data <- data.frame(signature.names, ffpe.cosmic.cos.sims, average.auc.values)
+colnames(cos.sim.auc.data) <- c("signature", "cosine_similarity", "average_auc")
+```
+
+```{r}
+model2 <- lm(average_auc ~ cosine_similarity, data = cos.sim.auc.data)
+
+#summary(model2)
+
+model2_summary <- summary(model2)
+
+cos.sim.auc.data$residuals <- model2_summary$residuals
+
+cos.sim.auc.outliers <- cos.sim.auc.data %>%
+  filter(residuals >= quantile(cos.sim.auc.data$residuals, 0.95) | 
+         residuals <= quantile(cos.sim.auc.data$residuals, 0.05))
+```
+
+```{r}
+ggplot(cos.sim.auc.data, aes(x = cosine_similarity, y = average_auc))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  labs(title = "Average area under curve vs. cosine similarity to FFPE", x = "Cosine similarity of COSMIC signature to FFPE signature", y = "Average area under curve (10 iterations)")+
+  geom_point(data = cos.sim.auc.outliers, color = "red")+
+  geom_label_repel(data = cos.sim.auc.outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)
+  
+```
+
+#Scatterplot of Average Sensitivity and Specificity vs. Cosine Similarity to FFPE
+
+```{r}
+#outer for loop: loop through each COSMIC v3 signature
+average.sensitivity.values <- c()
+average.specificity.values <- c()
+for (x in 1:60){
+  signature.sensitivity.vec <- c()
+  signature.specificity.vec <- c()
+  #inner for loop: calculate misclassification rate 10x for each signature
+  for (y in 1:10){
+    #create a sample vector of 100 mutations for the COSMIC signature corresponding to number x
+    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],100)
+    #Create FFPE sample vector of 100 mutations
+    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 100)
+    classification.df <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[x],"FFPE"), list(signature.matrix.list[[x]], ffpe.signature))
+    class.df.colnames <- colnames(classification.df)
+    sig.name <- class.df.colnames[3]
+    #Count number of true positives (for sensititivity)
+    sensitivity.df <- classification.df %>%
+      filter(truth == sig.name & classify == sig.name)
+    #Calculate sensitivity
+    sensitivity.val = nrow(sensitivity.df)/100
+    #Add to the vector of 10 sensitivity values
+    signature.sensitivity.vec[y] = sensitivity.val
+    #Count number of true negatives (for specificity)
+    specificity.df <- classification.df %>%
+      filter(truth == "FFPE" & classify == "FFPE")
+    #Calculate specificity
+    specificity.val = nrow(specificity.df)/100
+    #Add to the vector of 10 specificity values
+    signature.specificity.vec[y] = specificity.val
+  }
+  average.signature.sensitivity <- mean(signature.sensitivity.vec)
+  average.sensitivity.values[x] <- average.signature.sensitivity
+  average.signature.specificity <- mean(signature.specificity.vec)
+  average.specificity.values[x] <- average.signature.specificity
+}
+```
+
+```{r}
+sens.spec.data <- data.frame(signature.names, ffpe.cosmic.cos.sims, average.sensitivity.values, average.specificity.values)
+
+colnames(sens.spec.data) <- c("signature", "cosine_similarity", "sensitivity", "specificity")
+
+sens.spec.data.2 <- sens.spec.data %>%
+  pivot_longer(c(sensitivity, specificity), names_to = "measure", values_to = "value")
+```
+
+```{r}
+ggplot(data = sens.spec.data.2, aes(x = cosine_similarity, y = value, color = measure))+
+  geom_point()+
+  geom_smooth(method = lm, se = FALSE)+
+  labs(title = "Sensitivity & Specificity vs. Cosine Similarity to FFPE Signature", x = "Cosine Similarity of COSMIC Signature to FFPE", y = "Average Sensitivity and Specificity (10 iterations)")
+```
+

@@ -3,11 +3,14 @@ title: "Plots"
 author: "Audrey Mitchell"
 date: "6/30/2021"
 output: pdf_document
+editor_options: 
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(NMF)
+library(MutationalPatterns)
 library(tidyverse)
 library(ggrepel)
 library(ROCR)
@@ -201,51 +204,21 @@ for (i in 1:60){
 ```{r}
 #outer for loop: loop through each COSMIC v3 signature
 average.misclassification.rates <- c()
-average.auc.values <- c()
 for (x in 1:60){
   signature.misclass.vec <- c()
-  signature.auc.vec <- c()
   #inner for loop: calculate misclassification rate 10x for each signature
   for (y in 1:10){
     #create a sample vector of 180 mutations for the COSMIC signature corresponding to number x
-    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],180)
+    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],100)
     #Create FFPE sample vector of 20 mutations
-    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 20)
+    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 100)
     classification.df <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[x],"FFPE"), list(signature.matrix.list[[x]], ffpe.signature))
     misclassification.rate <- mean(classification.df$misclassification)
     signature.misclass.vec[y] <- misclassification.rate
-    class.df.colnames <- colnames(classification.df)
-    sig.name <- class.df.colnames[3]
-    classification.df.2 <- classification.df %>%
-      mutate(signature.indicator = ifelse(classify == sig.name, 1, 0))
-    pred <- prediction(classification.df.2[3], classification.df.2$signature.indicator)
-    auc.perf <- performance(pred, measure = "auc")
-    auc.value <- auc.perf@y.values[[1]][1]
-    signature.auc.vec[y] <- auc.value
   }
   average.signature.misclass <- mean(signature.misclass.vec)
   average.misclassification.rates[x] <- average.signature.misclass
-  average.signature.auc <- mean(signature.auc.vec)
-  average.auc.values[x] <- average.signature.auc
 }
-```
-
-```{r}
-#Example of loop for SBS5: all mutations are classified as SBS5 -> problem with ROCR
-sample.vec <- create_signature_sample_vector(signature.matrix.list[[5]],180)
-    #Create FFPE sample vector of 20 mutations
-ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 20)
-classification.df <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[5],"FFPE"), list(signature.matrix.list[[5]], ffpe.signature))
-misclassification.rate <- mean(classification.df$misclassification)
-signature.misclass.vec[10] <- misclassification.rate
-class.df.colnames <- colnames(classification.df)
-sig.name <- class.df.colnames[3]
-classification.df.2 <- classification.df %>%
-  mutate(signature.indicator = ifelse(classify == sig.name, 1, 0))
-pred <- prediction(classification.df.2[3], classification.df.2$signature.indicator)
-    auc.perf <- performance(pred, measure = "auc")
-    auc.value <- auc.perf@y.values[[1]][1]
-    signature.auc.vec[10] <- auc.value
 ```
 
 
@@ -264,10 +237,469 @@ colnames(cos.sim.misclass.data) <- c("signature", "cosine_similarity", "average_
 ```
 
 ```{r}
+model1 <- lm(average_misclassification ~ log(cosine_similarity), data = cos.sim.misclass.data)
+
+summary(model1)
+
+model1_summary <- summary(model1)
+
+cos.sim.misclass.data$residuals <- model1_summary$residuals
+
+cos.sim.misclass.outliers <- cos.sim.misclass.data %>%
+  filter(residuals >= quantile(cos.sim.misclass.data$residuals, 0.90) | 
+         residuals <= quantile(cos.sim.misclass.data$residuals, 0.1))
+```
+
+```{r}
 ggplot(cos.sim.misclass.data, aes(x = cosine_similarity, y = average_misclassification))+
   geom_point()+
   geom_smooth(method = "lm")+
   labs(title = "Average misclassification rate vs. cosine similarity to FFPE", x = "Cosine similarity of COSMIC signature to FFPE signature", y = "Average misclassification rate (10 iterations)")+
   scale_x_log10()+
-  geom_label_repel(aes(label = signature), max.overlaps = 7, label.size =   0.1)
+  geom_point(data = cos.sim.misclass.outliers, color = "red")+
+  geom_label_repel(data = cos.sim.misclass.outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)
+  
 ```
+
+#Scatterplot of Average AUC vs. Cosine Similarity to FFPE
+```{r}
+#outer for loop: loop through each COSMIC v3 signature
+average.auc.values <- c()
+for (x in 1:60){
+  signature.auc.vec <- c()
+  #inner for loop: calculate misclassification rate 10x for each signature
+  for (y in 1:10){
+    #create a sample vector of 100 mutations for the COSMIC signature corresponding to number x
+    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],100)
+    #Create FFPE sample vector of 100 mutations
+    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 100)
+    classification.df.1 <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[x],"FFPE"), list(signature.matrix.list[[x]], ffpe.signature))
+    class.df.colnames <- colnames(classification.df.1)
+    sig.name <- class.df.colnames[3]
+    classification.df.2 <- classification.df.1 %>%
+      mutate(signature.indicator = ifelse(truth == sig.name, 1, 0))
+    predictions <- classification.df.2[3]
+    labels <- classification.df.2$signature.indicator
+    pred <- prediction(predictions, labels)
+    auc.perf <- performance(pred, measure = "auc")
+    signature.auc.vec[y] <- auc.perf@y.values[[1]][1]
+  }
+  average.signature.auc <- mean(signature.auc.vec)
+  average.auc.values[x] <- average.signature.auc
+}
+```
+
+```{r}
+cos.sim.auc.data <- data.frame(signature.names, ffpe.cosmic.cos.sims, average.auc.values)
+colnames(cos.sim.auc.data) <- c("signature", "cosine_similarity", "average_auc")
+```
+
+```{r}
+model2 <- lm(average_auc ~ cosine_similarity, data = cos.sim.auc.data)
+
+summary(model2)
+
+model2_summary <- summary(model2)
+
+cos.sim.auc.data$residuals <- model2_summary$residuals
+
+cos.sim.auc.outliers <- cos.sim.auc.data %>%
+  filter(residuals >= quantile(cos.sim.auc.data$residuals, 0.95) | 
+         residuals <= quantile(cos.sim.auc.data$residuals, 0.05))
+```
+
+```{r}
+ggplot(cos.sim.auc.data, aes(x = cosine_similarity, y = average_auc))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  labs(title = "Average area under curve vs. cosine similarity to FFPE", x = "Cosine similarity of COSMIC signature to FFPE signature", y = "Average area under curve (10 iterations)")+
+  geom_point(data = cos.sim.auc.outliers, color = "red")+
+  geom_label_repel(data = cos.sim.auc.outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)
+  
+```
+
+#Varying total number of mutations (Signature 4)
+
+```{r}
+signature.4.mat <- as.matrix(cosmic.signatures[,"SBS4"])
+rownames(signature.4.mat) <- mutations
+plot_96_profile(signature.4.mat)
+```
+
+```{r}
+average.auc.values <- c()
+i = 1
+for(total_mutations in seq(100, 1000, by = 50)){
+  auc.values <- c()
+  for(x in 1:10){
+    mutation.number <- total_mutations/2
+    sig.4.sample.vec <- create_signature_sample_vector(signature.4.mat, mutation.number)
+    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, mutation.number)
+    classification <- get_classification_df(list(sig.4.sample.vec, ffpe.sample.vec), c("SBS4","FFPE"), list(signature.4.mat, ffpe.signature))
+    classification <- classification %>%
+      mutate(indicator = ifelse(truth == "SBS4", 1, 0))
+    predictions <- classification$SBS4
+    labels <- classification$indicator
+    pred = prediction(predictions, labels)
+    auc.perf <- performance(pred, measure = "auc")
+    auc.val <- auc.perf@y.values[[1]][1]
+    auc.values[x] <- auc.val
+  }
+  average.auc.val <- mean(auc.values)
+  average.auc.values[i] <- average.auc.val
+  i = i + 1
+  
+}
+```
+
+```{r}
+total_mutations <- seq(100, 1000, by = 50)
+total_mutations_df <- data.frame(total_mutations, average.auc.values)
+colnames(total_mutations_df) <- c("total_mutations", "average_auc")
+
+#plot(total_mutations_df$total_mutations, total_mutations_df$average.auc.values)
+```
+
+```{r}
+ggplot(data = total_mutations_df, aes(x = total_mutations, y = average_auc))+
+  geom_point()+
+  geom_smooth(method = "lm", se = TRUE)
+```
+
+#Varying total number of mutations (Signature 6)
+
+```{r}
+signature.6.mat <- as.matrix(cosmic.signatures[,"SBS6"])
+rownames(signature.6.mat) <- mutations
+plot_96_profile(signature.6.mat)
+```
+
+```{r}
+average.auc.values6 <- c()
+i = 1
+for(total_mutations in seq(100, 1000, by = 50)){
+  auc.values6 <- c()
+  for(x in 1:10){
+    mutation.number <- total_mutations/2
+    sig.6.sample.vec <- create_signature_sample_vector(signature.6.mat, mutation.number)
+    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, mutation.number)
+    classification <- get_classification_df(list(sig.6.sample.vec, ffpe.sample.vec), c("SBS6","FFPE"), list(signature.6.mat, ffpe.signature))
+    classification <- classification %>%
+      mutate(indicator = ifelse(truth == "SBS6", 1, 0))
+    predictions <- classification$SBS6
+    labels <- classification$indicator
+    pred = prediction(predictions, labels)
+    auc.perf <- performance(pred, measure = "auc")
+    auc.val <- auc.perf@y.values[[1]][1]
+    auc.values[x] <- auc.val
+  }
+  average.auc.val <- mean(auc.values)
+  average.auc.values6[i] <- average.auc.val
+  i = i + 1
+  
+}
+```
+
+```{r}
+total_mutations6 <- seq(100, 1000, by = 50)
+total_mutations_df6 <- data.frame(total_mutations6, average.auc.values6)
+colnames(total_mutations_df6) <- c("total_mutations", "average_auc")
+
+#plot(total_mutations_df$total_mutations, total_mutations_df$average.auc.values)
+```
+
+```{r}
+ggplot(data = total_mutations_df6, aes(x = total_mutations, y = average_auc))+
+  geom_point()
+  #geom_smooth(method = "lm")
+```
+
+#Diagram of Method
+- We start with a mutational profile: create a sample of 200 MMR, 200 Tobacco, 100 FFPE, plot the mutational profile
+
+```{r}
+mmr.sample <- create_signature_sample_vector(signature.6.mat, 200)
+tobacco.sample <- create_signature_sample_vector(signature.4.mat, 200)
+ffpe.sample <- create_signature_sample_vector(ffpe.signature, 100)
+
+ex.profile.mat <- vector_to_matrix(c(mmr.sample, tobacco.sample))
+rownames(ex.profile.mat) <- mutations
+
+plot_96_profile(ex.profile.mat)+
+  labs(title = "Mutational Profile of Original Simulated Sample")+
+  theme(aspect.ratio = 1)
+```
+
+```{r}
+ex.ffpe.profile.mat <- vector_to_matrix(c(mmr.sample, tobacco.sample, ffpe.sample))
+rownames(ex.ffpe.profile.mat) <- mutations
+
+plot_96_profile(ex.ffpe.profile.mat)+
+  labs(title = "Mutational Profile After Addition of FFPE Mutations")+
+  theme(aspect.ratio = 1)
+```
+
+- We use extract_signatures or fit_to_signatures from the MutationalPatterns package to determine mutational signatures and their contributions: plot signatures and contributions
+
+```{r}
+sig.mat <- cbind(signature.4.mat, signature.6.mat, ffpe.signature)
+colnames(sig.mat) <- c("Signature 4", "Signature 6", "FFPE")
+fts.res <- fit_to_signatures(ex.ffpe.profile.mat, sig.mat)
+
+plot_contribution(fts.res$contribution, sig.mat, coord_flip = TRUE)+
+  labs(title = "Relative Contributions of Signatures")+
+  theme(aspect.ratio = 0.3)
+```
+
+```{r}
+plot_96_profile(sig.mat)+
+  labs(title = "Mutational Signatures")
+```
+
+- We use Bayes formula to calculate the posterior probability of each signature given each of the 96 mutation types; prior, likelihood, and marginalization are obtained from the mutational signatures and contributions
+- We classify which signature each mutation is due to based on the signature with the hightest posterior probability: show part of the classification data frame
+
+```{r}
+classifications <- get_classification_df(list(tobacco.sample, mmr.sample, ffpe.sample), c("Signature 4", "Signature 6", "FFPE"), list(signature.4.mat, signature.6.mat, ffpe.signature))
+
+head(classifications)
+```
+
+- Mutations classified as FFPE are filtered out, and we obtain a reconstructed profile: plot reconstructed profile
+
+```{r}
+filter.ffpe <- classifications %>%
+  filter(classify != "FFPE")
+
+recon.vec <- filter.ffpe$mutations
+recon.mat <- vector_to_matrix(recon.vec)
+rownames(recon.mat) <- mutations
+
+plot_96_profile(recon.mat)+
+  labs(title = "Reconstructed Profile After Removing FFPE Classifed Mutations")
+```
+
+```{r}
+cos_sim_matrix(ex.profile.mat, recon.mat)
+```
+
+#Description of Simulation
+- Plot original signature
+- Plot profile of sample created to match the signature distribution
+- cosine similarity of sample to original signature
+
+```{r}
+x1 <- plot_96_profile(signature.4.mat)+
+  labs(title = "Signature 4")
+x2 <- plot_96_profile(signature.6.mat)+
+  labs(title = "Signature 6")
+tobacco.1000 <- create_signature_sample_matrix(signature.4.mat, 1000)
+mmr.1000 <- create_signature_sample_matrix(signature.6.mat, 1000)
+x3 <- plot_96_profile(tobacco.1000)+
+  labs(title = "Signature 4 Simulated Sample Profile")
+x4 <- plot_96_profile(mmr.1000)+
+  labs(title = "Signature 6 Simulated Sample Profile")
+grid.arrange(x1, x2, x3, x4, nrow = 2)
+```
+
+#Profile Reconstruction for MMR
+- Create sample of 500 MMR mutations
+- Plot mutational profile of sample
+- Add 500 FFPE mutations to the sample
+- Plot FFPE-added profile
+- Run classifier function
+- Filter out FFPE mutations
+- Plot reconstructed profile
+- Calculate the cosine similarity between the original and recosntructed
+
+```{r}
+mmr.500 <- create_signature_sample_vector(signature.6.mat, 500)
+mmr.mat <- vector_to_matrix(mmr.500)
+rownames(mmr.mat) <- mutations
+
+m1 <- plot_96_profile(mmr.mat)+
+  labs(title = "Mutational Profile of Signature 6 Simulated Sample")+
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        plot.title = element_text(size = 10))
+```
+
+```{r}
+ffpe.500 <- create_signature_sample_vector(ffpe.signature, 500)
+mmr.ffpe.samp <- c(mmr.500, ffpe.500)
+mmr.ffpe.mat <- vector_to_matrix(mmr.ffpe.samp)
+rownames(mmr.ffpe.mat) <- mutations
+m2 <- plot_96_profile(mmr.ffpe.mat)+
+  labs(title = "Mutational Profile After Addition of FFPE")+
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        plot.title = element_text(size = 10))
+```
+
+```{r}
+mmr.ffpe.class <- get_classification_df(list(mmr.500, ffpe.500), c("Signature 6", "FFPE"), list(signature.6.mat, ffpe.signature))
+
+mmr.only <- mmr.ffpe.class %>%
+  filter(classify != "FFPE")
+
+recon.mmr.vec <- mmr.only$mutations
+recon.mmr.matrix <- vector_to_matrix(recon.mmr.vec)
+rownames(recon.mmr.matrix) <- mutations
+
+m3 <- plot_96_profile(recon.mmr.matrix)+
+  labs(title = "Reconstructed Mutational Profile (FFPE Mutations Removed)")+
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        plot.title = element_text(size = 10))
+```
+
+```{r}
+grid.arrange(m1,m2,m3, nrow = 3)
+```
+
+
+#Profile Reconstruction for Signature 4
+- Create sample of 500 Signature 4 mutations
+- Plot mutational profile of sample
+- Add 500 FFPE mutations to the sample
+- Plot FFPE-added profile
+- Run classifier function
+- Filter out FFPE mutations
+- Plot reconstructed profile
+- Calculate the cosine similarity between the original and recosntructed
+
+```{r}
+tobacco.500 <- create_signature_sample_vector(signature.4.mat, 500)
+tobacco.mat <- vector_to_matrix(tobacco.500)
+
+t1 <- plot_96_profile(tobacco.mat)+
+  labs(title = "Mutational Profile of Signature 4 Simulated Sample", x = "Dinucleotide Context", y = "Probability")+
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        plot.title = element_text(size = 10))
+t1
+```
+
+```{r}
+tobacco.ffpe.vec <- c(tobacco.500, ffpe.500)
+tobacco.ffpe.mat <- vector_to_matrix(tobacco.ffpe.vec)
+rownames(tobacco.ffpe.mat) <- mutations
+
+t2 <- plot_96_profile(tobacco.ffpe.mat)+
+  labs(title = "Mutational Profile After Addition of FFPE", x = "Dinucleotide Context", y = "Probability")+
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        plot.title = element_text(size = 10))
+```
+
+```{r}
+tobacco.ffpe.class <- get_classification_df(list(tobacco.500, ffpe.500), c("Signature 4", "FFPE"), list(signature.4.mat, ffpe.signature))
+
+tobacco.only <- tobacco.ffpe.class %>%
+  filter(classify != "FFPE")
+
+recon.tobacco.vec <- tobacco.only$mutations
+recon.tobacco.mat <- vector_to_matrix(recon.tobacco.vec)
+rownames(recon.tobacco.mat) <- mutations
+
+t3 <- plot_96_profile(recon.tobacco.mat)+
+  labs(title = "Reconstructed Mutational Profile (FFPE Mutations Removed)", x = "Dinucleotide Context", y = "Probability")+
+  theme(axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        plot.title = element_text(size = 10))
+```
+
+```{r}
+grid.arrange(t1, t2, t3)
+```
+
+
+#Scatterplot of Cosine similarity between recosntructed signature and original vs. cosine similarity between signature and the FFPE signature
+- For each signature, iterate through sample creation and profile reconstruction 10 times, calculate cosine similarity between original and reconstruction
+- Take average of 10 cosine similarities, plot against the cosine similarity of the COSMIC signatures to FFPE
+
+```{r}
+#outer for loop: loop through each COSMIC v3 signature
+average.auc.values <- c()
+for (x in 1:60){
+  signature.auc.vec <- c()
+  #inner for loop: calculate misclassification rate 10x for each signature
+  for (y in 1:10){
+    #create a sample vector of 100 mutations for the COSMIC signature corresponding to number x
+    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],100)
+    #Create FFPE sample vector of 100 mutations
+    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 100)
+    classification.df.1 <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[x],"FFPE"), list(signature.matrix.list[[x]], ffpe.signature))
+    class.df.colnames <- colnames(classification.df.1)
+    sig.name <- class.df.colnames[3]
+    classification.df.2 <- classification.df.1 %>%
+      mutate(signature.indicator = ifelse(truth == sig.name, 1, 0))
+    predictions <- classification.df.2[3]
+    labels <- classification.df.2$signature.indicator
+    pred <- prediction(predictions, labels)
+    auc.perf <- performance(pred, measure = "auc")
+    signature.auc.vec[y] <- auc.perf@y.values[[1]][1]
+  }
+  average.signature.auc <- mean(signature.auc.vec)
+  average.auc.values[x] <- average.signature.auc
+}
+```
+
+
+#Scatterplot of Sensitivity and Specificity vs. Cosine similarity of COSMIC signature to FFPE
+
+```{r}
+#outer for loop: loop through each COSMIC v3 signature
+average.sensitivity.values <- c()
+average.specificity.values <- c()
+for (x in 1:60){
+  signature.sensitivity.vec <- c()
+  signature.specificity.vec <- c()
+  #inner for loop: calculate misclassification rate 10x for each signature
+  for (y in 1:10){
+    #create a sample vector of 100 mutations for the COSMIC signature corresponding to number x
+    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],100)
+    #Create FFPE sample vector of 100 mutations
+    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 100)
+    classification.df <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[x],"FFPE"), list(signature.matrix.list[[x]], ffpe.signature))
+    class.df.colnames <- colnames(classification.df)
+    sig.name <- class.df.colnames[3]
+    #Count number of true positives (for sensititivity)
+    sensitivity.df <- classification.df %>%
+      filter(truth == sig.name & classify == sig.name)
+    #Calculate sensitivity
+    sensitivity.val = nrow(sensitivity.df)/100
+    #Add to the vector of 10 sensitivity values
+    signature.sensitivity.vec[y] = sensitivity.val
+    #Count number of true negatives (for specificity)
+    specificity.df <- classification.df %>%
+      filter(truth == "FFPE" & classify == "FFPE")
+    #Calculate specificity
+    specificity.val = nrow(specificity.df)/100
+    #Add to the vector of 10 specificity values
+    signature.specificity.vec[y] = specificity.val
+  }
+  average.signature.sensitivity <- mean(signature.sensitivity.vec)
+  average.sensitivity.values[x] <- average.signature.sensitivity
+  average.signature.specificity <- mean(signature.specificity.vec)
+  average.specificity.values[x] <- average.signature.specificity
+}
+```
+
+```{r}
+sens.spec.data <- data.frame(signature.names, ffpe.cosmic.cos.sims, average.sensitivity.values, average.specificity.values)
+
+colnames(sens.spec.data) <- c("signature", "cosine_similarity", "sensitivity", "specificity")
+
+sens.spec.data.2 <- sens.spec.data %>%
+  pivot_longer(c(sensitivity, specificity), names_to = "measure", values_to = "value")
+```
+
+```{r}
+ggplot(data = sens.spec.data.2, aes(x = cosine_similarity, y = value, color = measure))+
+  geom_point()+
+  geom_smooth(method = lm)+
+  labs(title = "Sensitivity & Specificity vs. Cosine Similarity to FFPE Signature", x = "Cosine Similarity of COSMIC Signature to FFPE", y = "Sensitivity and Specificity")
+```
+
+
