@@ -7,8 +7,8 @@ create_gr_from_sample <- function(sample, specie, chromosome) {
     stop("argument chromosome is not of type character")
   } else if (str_sub(chromosome, 1, 3) != "chr" || suppressWarnings(is.na(as.numeric(str_sub(chromosome, 4))))) {
     stop("argument chromosome is not of format: chr***. e.g chr17")
-  } else if (!is.vector(sample)) {
-    stop("argument sample is not a vector")
+  } else if (!is.data.frame(sample)) {
+    stop("argument sample is not a dataframe")
   } else if (class(specie) != "BSgenome") {
     stop("argument specie is not a Bsgenome object")
   }
@@ -17,7 +17,7 @@ create_gr_from_sample <- function(sample, specie, chromosome) {
   seq <- getSeq(specie, chromosome)
   position <- vector(mode = "double")
   id <- vector(mode = "character")
-  
+  info <- vector(mode = "character")
   # Original nucleotide
   ref <- vector(mode = "character")
   # New nucleotide
@@ -29,13 +29,15 @@ create_gr_from_sample <- function(sample, specie, chromosome) {
   i <- 10000
   
   # Loops through every mutation in sample
-  for (mutation in sample) {
+  for (m in 1:length(sample$mutations)) {
     
     # Reformat mutation string and stores substitutions into ref and alt
-    mut.reformatted <- str_replace_all(mutation, "[[:punct:]>]", "")
+    mut.reformatted <- str_replace_all(sample$mutations[m], "[[:punct:]>]", "")
     ref <- c(ref, str_sub(mut.reformatted, 2, 2))
     alt <- c(alt, str_sub(mut.reformatted, 3, 3))
     str_sub(mut.reformatted, 3, 3) <- ""
+    
+    info <- c(info, paste("SOMATIC;TRUTH=", sample$truth[m], ";PROB", "=", round(sample[m, 3], 3), ",", round(sample[m, 4], 3), sep = ""))
     
     # Searches chromosome sequence for mutation match
     while (mut.reformatted != toString(seq[i:(i+2)])) {
@@ -58,10 +60,10 @@ create_gr_from_sample <- function(sample, specie, chromosome) {
   gr$ALT <- alt
   gr$QUAL <- 100
   gr$FILTER <- "."
-  gr$INFO <- "SOMATIC"
+  gr$INFO <- info
   gr$FORMAT <- "GT:GQ:DP"
-  gr$SAMPLE1 <- paste("0/1:", sample(10:100, length(sample), replace=T), ":", sample(0:99, length(sample), replace=T), sep = "")
-  gr$SAMPLE2 <- paste("0/0:", sample(10:100, length(sample), replace=T), ":", sample(0:99, length(sample), replace=T), sep = "")
+  gr$SAMPLE1 <- paste("0/1:", sample(10:100, length(sample$mutations), replace=T), ":", sample(0:99, length(sample$mutations), replace=T), sep = "")
+  gr$SAMPLE2 <- paste("0/0:", sample(10:100, length(sample$mutations), replace=T), ":", sample(0:99, length(sample$mutations), replace=T), sep = "")
   
   return (gr)
 }
@@ -73,7 +75,7 @@ write_grange_to_vcf <- function(grange, file.name) {
   write(file.data, file.name)
   
   # Loads in template for a vcf file and writes to new file
-  file.data <- read_file("vcf-template.vcf")
+  file.data <- read_file("../vcf-template.vcf")
   file.data <- str_remove_all(file.data, "\r")
   
   # Appends to file.data meta column names
@@ -144,7 +146,53 @@ write_df_to_vcf <- function(df, specie, chromosome, file.name) {
   write_grange_to_vcf(gr, file.name)
 }
 
+get_mut_pos <- function(mutation) {
+  
+}
 
+create_classify_df <- function(vcf.file, sequence) {
+  
+  file.name <- str_remove(vcf.file, ".vcf")
+  files <- c(paste(file.name, "_Refined.vcf", sep = ""), paste(file.name, "_Artifact.vcf", sep = ""))
+  
+  mutations.vector <- vector(mode = "character")
+  truth.vector <- vector(mode = "character")
+  classify.vector <- vector(mode = "character")
+  misclass.vector <- vector(mode = "double")
+  
+  for (file in 1:2) {
+    sample <- ReadVCF(files[file])
+    
+    positions <- sample[1]$data$POS
+    truths <- str_remove_all(sample[1]$data$INFO, "SOMATIC;TRUTH=")
+    
+    for (i in 1:length(positions)) {
+      mutation <- paste(sequence[positions[i] - 1], "[", sequence[positions[i]], ">", sample[1]$data[i]$ALT, "]", sequence[positions[i] + 1], sep = "")
+      mutations.vector <- c(mutations.vector, mutation)
+      
+      if (str_split(truths, ";")[[i]][1] != "FFPE") {
+        other.sig.name <- str_split(truths, ";")[[i]][1]
+      }
+      
+      truth.vector <- c(truth.vector, str_split(truths, ";")[[i]][1])
+      
+      if (file == 1) {
+        classify.vector <- c(classify.vector, other.sig.name)
+      } else {
+        classify.vector <- c(classify.vector, "FFPE")
+      }
+    }
+    
+    
+  }
+  
+  df <- data.frame(mutations = mutations.vector, truth = truth.vector, classify = classify.vector)
+  
+  df <- df %>%
+    mutate(misclassification = ifelse(truth != classify, 1, 0))
+
+  return (df)
+}
 
 
 
