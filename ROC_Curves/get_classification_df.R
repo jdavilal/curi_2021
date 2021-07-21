@@ -27,11 +27,11 @@ get_classification_df <- function(samples, sig.names, signatures) {
   
   #converts sample vector into a table of probabilities
   tab <- table(signature.sample)/sum(table(signature.sample))
-
+  
   #converts table of probabilities to a data frame and defines column names
   sample.probs.df <- data.frame(tab)
   colnames(sample.probs.df) <- c("mutations", "frequencies")
-
+  
   #defines a function that joins two data frames and replaces NA with 0
   left_join_NA <- function(x, y, by) {
     left_join(x = x, y = y, by = by) %>% 
@@ -43,10 +43,10 @@ get_classification_df <- function(samples, sig.names, signatures) {
   
   #creates a data.frame of mutation types to join with sample probabilities
   df <- data.frame(mutations)
-
+  
   #joins together sample probabilities with data frame of mutation types so that all 96 mutation types are included
   sample.df <- left_join_NA(df, sample.probs.df, by = "mutations")
-
+  
   #Add pseudocount to column of probabilities 
   sample.matrix<- as.matrix(sample.df$frequencies) + 0.0001
   rownames(sample.matrix)= mutations
@@ -68,7 +68,7 @@ get_classification_df <- function(samples, sig.names, signatures) {
     #each element of empty list is vector of probabilities for every element/profile from mutational sample
     prob.list[[i]]<-vector()
   }
-
+  
   for (m in mutations) {
     #each mutation type (string) is sent to Bayes function along with "nmf" results
     probs <- extract_all_prob(m, 1, nmf_res)
@@ -96,15 +96,18 @@ get_classification_df <- function(samples, sig.names, signatures) {
   for (row in 1:nrow(df.final)){
     #store posterior probabilities in each row for all signatures
     probabilities <- df.final[row,3:(2+length(samples))]
-    #finds the index for the maximum probability and retrieves name of signature that is the max
-    if(max(is.na(probabilities)) == 0){
-      classifier <- colnames(probabilities)[which.max(probabilities[1,])]
-    }
-    else{
-      classifier <- NA
-    }    
-    #each element is signature name (string) that has the maximum posterior probability
-    classify[row]<- classifier
+    tryCatch(
+      expr = {
+        #finds the index for the maximum probability and retrieves name of signature that is the max
+        classifier <- colnames(probabilities)[which.max(probabilities[1,])]
+        #each element is signature name (string) that has the maximum posterior probability
+        classify[row]<- classifier
+      },
+      error = function(e){
+        #when mutation that should not have been generated appears, probabilities and classifier are NA
+        classifier <- NA
+      }
+    )
   }
   
   #add column to the data frame that represents Bayesian classifier
@@ -115,7 +118,12 @@ get_classification_df <- function(samples, sig.names, signatures) {
     #misclassification when the source string does not match the Bayesian classifier
     mutate(misclassification = ifelse(classify != truth, 1, 0))
   
-
+  #remove mutations that should not have been randomly generated
+  df.final <- df.final %>%
+    #mutations that don't appear in a signature are evaluated as NA in posteriors & classification
+    drop_na()
+  
+  
   return (df.final)
-
+  
 }
