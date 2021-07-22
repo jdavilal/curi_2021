@@ -59,7 +59,7 @@ signature.names <- colnames(cosmic.signatures)
 
 #Create list of signature matrices with assigned rownames
 signature.matrix.list <- list()
-for (i in 1:60){
+for (i in 1:length(signature.names)){
   sig <- cosmic.signatures[,i]
   sig.mat <- as.matrix(sig)
   rownames(sig.mat) <- mutations
@@ -69,7 +69,7 @@ for (i in 1:60){
 
 #create vector of cosine similarities to the FFPE signature
 ffpe.cosmic.cos.sims <- c()
-for (i in 1:60){
+for (i in 1:length(signature.names)){
   cos.sim <- cos_sim_matrix(signature.matrix.list[[i]], ffpe.signature)
   ffpe.cosmic.cos.sims[i] <- cos.sim[1,1]
 }
@@ -136,7 +136,7 @@ plot_96_profile(ex.sim.sample)+
 ```{r}
 #outer for loop: loop through each COSMIC v3 signature
 average.auc.values <- c()
-for (x in 1:60){
+for (x in 1:length(signature.names)){
   signature.auc.vec <- c()
   #inner for loop: calculate misclassification rate 10x for each signature
   for (y in 1:10){
@@ -195,7 +195,7 @@ ggplot(cos.sim.auc.data, aes(x = cosine_similarity, y = average_auc))+
 #outer for loop: loop through each COSMIC v3 signature
 average.sensitivity.values <- c()
 average.specificity.values <- c()
-for (x in 1:60){
+for (x in 1:length(signature.names)){
   signature.sensitivity.vec <- c()
   signature.specificity.vec <- c()
   #inner for loop: calculate misclassification rate 10x for each signature
@@ -245,3 +245,227 @@ ggplot(data = sens.spec.data.2, aes(x = cosine_similarity, y = value, color = me
   labs(title = "Sensitivity & Specificity vs. Cosine Similarity to FFPE Signature", x = "Cosine Similarity of COSMIC Signature to FFPE", y = "Average Sensitivity and Specificity (10 iterations)")
 ```
 
+
+# Dilution performance characteristics 
+
+```{r}
+cosmic.sig4 = signature.matrix.list[[4]]
+cosmic.sig6 = signature.matrix.list[[6]]
+ffpe.sig = ffpe.signature
+```
+
+
+## Dilution predictions
+
+```{r}
+num.mut=1000
+probabilities.MMR <- vector(mode = "list", length = 99)
+truth.MMR <- vector(mode = "list", length = 99)
+
+for (x in seq(10, num.mut-1, by = 10)){
+  sample.sig6 <- create_signature_sample_vector(cosmic.sig6, x)
+  sig6.truth <- rep("MMR", x)
+  sample.ffpe <- create_signature_sample_vector(ffpe.sig, num.mut-x)
+  ffpe.truth <- rep("FFPE", num.mut-x)
+  test <- get_classification_df(list(sample.sig6, sample.ffpe), c("MMR","FFPE"),
+                                list(cosmic.sig6, ffpe.sig))
+  classification <- test %>%
+    mutate(trueBinary = ifelse(truth == "MMR",1,0))
+
+  probabilities.MMR[[x/10]] <- classification$MMR
+  truth.MMR[[x/10]] <- classification$trueBinary
+}
+```
+
+```{r}
+num.mut=1000
+probabilities.tob <- vector(mode = "list", length = 99)
+truth.tob <- vector(mode = "list", length = 99)
+
+for (x in seq(10, num.mut-1, by = 10)){
+  sample.sig4 <- create_signature_sample_vector(cosmic.sig4, x)
+  sig4.truth <- rep("Tobacco", x)
+  sample.ffpe <- create_signature_sample_vector(ffpe.sig, num.mut-x)
+  ffpe.truth <- rep("FFPE", num.mut-x)
+  test <- get_classification_df(list(sample.sig4, sample.ffpe), c("Tobacco","FFPE"),
+                                list(cosmic.sig4, ffpe.sig))
+  classification <- test %>%
+    mutate(trueBinary = ifelse(truth == "Tobacco",1,0))
+
+  probabilities.tob[[x/10]] <- classification$Tobacco
+  truth.tob[[x/10]] <- classification$trueBinary
+}
+```
+
+```{r}
+test.MMR <- prediction(probabilities.MMR, truth.MMR)
+test.tob <- prediction(probabilities.tob, truth.tob)
+```
+
+## Sensitivity
+
+### Sensitivity/MMR
+
+```{r}
+AVG.sens.MMR <- vector(mode = "list", length = 99)
+
+for (iteration in 1:20){
+  sens.MMR <- performance(test.MMR, measure = "sens")
+  
+  for(ind in 1:length(sens.MMR@x.values)){
+    thresh = as.vector(slot(sens.MMR, "x.values")[[ind]])
+    sens = as.vector(slot(sens.MMR, "y.values")[[ind]])
+    if (length(thresh) > 2){
+      if (identical(which(thresh<=0.5), integer(0))){
+        AVG.sens.MMR[[ind]][iteration] = NA
+      }
+      else{
+        low.ind = max(which(thresh >=0.5))
+        high.ind = min(which(thresh <=0.5))
+        #point slop formula of a line
+        slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
+        AVG.sens.MMR[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
+      }
+    }
+    else{
+      AVG.sens.MMR[[ind]][iteration] = NA
+    }
+  }
+}
+
+sens.MMR.vec = c()
+for (avg in 1:length(AVG.sens.MMR)){
+  sens.MMR.vec[avg] = mean(AVG.sens.MMR[[avg]], na.rm = TRUE)
+}
+```
+
+### Sensitivity/Tobacco
+
+```{r}
+AVG.sens.tob <- vector(mode = "list", length = 99)
+
+for(iteration in 1:20){
+  sens.tob <- performance(test.tob, measure = "sens")
+  
+  for(ind in 1:length(sens.tob@x.values)){
+    thresh = as.vector(slot(sens.tob, "x.values")[[ind]])
+    sens = as.vector(slot(sens.tob, "y.values")[[ind]])
+    if (length(thresh) > 2){
+      if (identical(which(thresh<=0.5), integer(0))){
+        AVG.sens.tob[[ind]][iteration] = NA
+      }
+      else{
+        low.ind = max(which(thresh >=0.5))
+        high.ind = min(which(thresh <=0.5))
+        #point slop formula of a line
+        slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
+        AVG.sens.tob[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
+      }
+    }
+    else{
+      AVG.sens.tob[[ind]][iteration] = NA
+    }
+  }
+}
+
+sens.tob.vec = c()
+for (avg in 1:length(AVG.sens.tob)){
+  sens.tob.vec[avg] = mean(AVG.sens.tob[[avg]], na.rm = TRUE)
+}
+```
+
+### Sensitivity across signatures
+
+```{r}
+plot(1:99, sens.MMR.vec, ylim = c(0,1), xlab = "Percent of each signature", 
+     ylab = "Sensitivity value", type = "l", main = "Comparing performance characteristics")
+lines(1:99, sens.tob.vec, lty = 2)
+abline(h = 0.85, col = "red")
+legend("bottomright", c("MMR sensitivity", "Tobacco sensitivity", 
+                        "Satisfactory Sensitivity"),
+       lty = c(1,2,1), col = c("black", "black", "red"))
+```
+
+## Specificity
+
+### Specificity/MMR
+
+```{r}
+AVG.spec.MMR <- vector(mode = "list", length = 99)
+
+for(iteration in 1:20){
+  spec.MMR <- performance(test.MMR, measure = "spec")
+  
+  for(ind in 1:length(spec.MMR@x.values)){
+    thresh = as.vector(slot(spec.MMR, "x.values")[[ind]])
+    spec = as.vector(slot(spec.MMR, "y.values")[[ind]])
+    if (length(thresh) > 2){
+      if (identical(which(thresh<=0.5), integer(0))){
+        AVG.spec.MMR[[ind]][iteration] = NA
+      }
+      else{
+        low.ind = max(which(thresh >=0.5))
+        high.ind = min(which(thresh <=0.5))
+        #point slop formula of a line
+        slope = (spec[high.ind] - spec[low.ind]) / (thresh[high.ind] - thresh[low.ind])
+        AVG.spec.MMR[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + spec[low.ind]
+      }
+    }
+    else{
+      AVG.spec.MMR[[ind]][iteration] = NA
+    }
+  }
+}
+
+spec.MMR.vec = c()
+for (avg in 1:length(AVG.spec.MMR)){
+  spec.MMR.vec[avg] = mean(AVG.spec.MMR[[avg]], na.rm = TRUE)
+}
+```
+
+### Specificity/Tobacco
+
+```{r}
+AVG.spec.tob <- vector(mode = "list", length = 99)
+
+for (iteration in 1:20){
+  spec.tob <- performance(test.tob, measure = "spec")
+  
+  for(ind in 1:length(spec.tob@x.values)){
+    thresh = as.vector(slot(spec.tob, "x.values")[[ind]])
+    spec = as.vector(slot(spec.tob, "y.values")[[ind]])
+    if (length(thresh) > 2){
+      if (identical(which(thresh<=0.5), integer(0))){
+        AVG.spec.tob[[ind]][iteration] = NA
+      }
+      else{
+        low.ind = max(which(thresh >=0.5))
+        high.ind = min(which(thresh <=0.5))
+        #point slop formula of a line
+        slope = (spec[high.ind] - spec[low.ind]) / (thresh[high.ind] - thresh[low.ind])
+        AVG.spec.tob[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + spec[low.ind]
+      }
+    }
+    else{
+      AVG.spec.tob[[ind]][iteration] = NA
+    }
+  }
+}
+
+spec.tob.vec = c()
+for (avg in 1:length(AVG.spec.tob)){
+  spec.tob.vec[avg] = mean(AVG.spec.tob[[avg]], na.rm = TRUE)
+}
+```
+
+### Specificity across all signatures
+
+```{r}
+plot(1:99, spec.MMR.vec, ylim = c(0,1), xlab = "Percent of each signature", 
+     ylab = "Specificity value", type = "l", main = "Comparing performance characteristics")
+lines(1:99, spec.tob.vec, lty = 2)
+abline(h = 0.85, col = "red")
+legend("bottomleft", c("MMR specificity", "Tobacco specificity", 
+                       "Satisfactory Specificity"),
+       lty = c(1,2,1), col = c("black", "black", "red"))
+```
