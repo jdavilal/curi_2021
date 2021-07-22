@@ -46,7 +46,64 @@ for (i in 1:60){
   cos.sim <- cos_sim_matrix(signature.matrix.list[[i]], ffpe.signature)
   ffpe.cosmic.cos.sims[i] <- cos.sim[1,1]
 }
+
+signature.4.mat <- as.matrix(cosmic.signatures[,"SBS4"])
+rownames(signature.4.mat) <- mutations
+
+signature.6.mat <- as.matrix(cosmic.signatures[,"SBS6"])
+rownames(signature.6.mat) <- mutations
 ```
+
+#Diagram of Methods
+
+```{r}
+mmr.sample <- create_signature_sample_vector(signature.6.mat, 200)
+tobacco.sample <- create_signature_sample_vector(signature.4.mat, 200)
+ffpe.sample <- create_signature_sample_vector(ffpe.signature, 100)
+
+ex.ffpe.profile.mat <- vector_to_matrix(c(mmr.sample, tobacco.sample, ffpe.sample))
+rownames(ex.ffpe.profile.mat) <- mutations
+
+plot_96_profile(ex.ffpe.profile.mat)+
+  labs(title = "Mutational Profile")
+```
+
+```{r}
+sig.mat <- cbind(signature.4.mat, signature.6.mat, ffpe.signature)
+colnames(sig.mat) <- c("Signature 4", "Signature 6", "FFPE")
+fts.res <- fit_to_signatures(ex.ffpe.profile.mat, sig.mat)
+
+plot_contribution(fts.res$contribution, sig.mat, coord_flip = TRUE)+
+  labs(title = "Relative Contributions of Signatures")+
+  theme(aspect.ratio = 0.3)
+```
+
+```{r}
+plot_96_profile(sig.mat)+
+  labs(title = "Mutational Signatures")
+```
+
+#Diagram of Simulating Data
+```{r}
+plot_96_profile(signature.4.mat)+
+  labs(title = "Signature 4")
+```
+
+```{r}
+plot_96_profile(ffpe.signature)+
+  labs(title = "FFPE Signature")
+```
+
+```{r}
+sample.4 <- create_signature_sample_vector(signature.4.mat, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.signature, 100)
+
+ex.sim.sample.vec <- c(sample.4, sample.ffpe)
+ex.sim.sample <- vector_to_matrix(ex.sim.sample.vec)
+plot_96_profile(ex.sim.sample)+
+  labs(title = "Simulated Sample Profile")
+```
+
 
 #Scatterplot of Average AUC vs. Cosine Similarity to FFPE
 ```{r}
