@@ -18,6 +18,8 @@ create_gr_from_sample <- function(sample, specie, chromosome) {
   position <- vector(mode = "double")
   id <- vector(mode = "character")
   info <- vector(mode = "character")
+  sample1 <- vector(mode = "character")
+  sample2 <- vector(mode = "character")
   # Original nucleotide
   ref <- vector(mode = "character")
   # New nucleotide
@@ -37,7 +39,7 @@ create_gr_from_sample <- function(sample, specie, chromosome) {
     alt <- c(alt, str_sub(mut.reformatted, 3, 3))
     str_sub(mut.reformatted, 3, 3) <- ""
     
-    info <- c(info, paste("SOMATIC;TRUTH=", sample$truth[m], ";PROB", "=", round(sample[m, 3], 3), ",", round(sample[m, 4], 3), sep = ""))
+    info <- c(info, paste("SOMATIC", ";TRUTH=", sample$truth[m], ";PROB", "=", round(sample[m, 3], 3), ",", round(sample[m, 4], 3), sep = ""))
     
     # Searches chromosome sequence for mutation match
     while (mut.reformatted != toString(seq[i:(i+2)])) {
@@ -47,6 +49,16 @@ create_gr_from_sample <- function(sample, specie, chromosome) {
     # Once matched, store position
     position <- c(position, i+1)
     id <- c(id, paste(str_sub(chromosome, 4, 4), ":", i+1, "_", str_sub(mut.reformatted, 1, 1), "/", str_sub(mut.reformatted, 3, 3), sep=""))
+    # if (sample$truth[m] == "FFPE") {
+    #   sample1 <- c(sample1, paste("0/1:", sample(10:50, 1), sep = ""))
+    #   sample2 <- c(sample2, paste("0/1:", sample(50:100, 1), sep = ""))
+    # } else {
+    #   sample1 <- c(sample1, paste("0/1:", sample(51:100, 1), sep = ""))
+    #   sample2 <- c(sample2, paste("0/1:", sample(10:50, 1, replace=T), sep = ""))
+    # }
+    
+    sample1 <- c(sample1, paste("0/1:", sample(30:60, 1), sep = ""))
+    sample2 <- c(sample2, paste("0/1:", sample(30:60, 1), sep = ""))
   }
   
   print("...Done!")
@@ -61,9 +73,9 @@ create_gr_from_sample <- function(sample, specie, chromosome) {
   gr$QUAL <- 100
   gr$FILTER <- "."
   gr$INFO <- info
-  gr$FORMAT <- "GT:GQ:DP"
-  gr$SAMPLE1 <- paste("0/1:", sample(10:100, length(sample$mutations), replace=T), ":", sample(0:99, length(sample$mutations), replace=T), sep = "")
-  gr$SAMPLE2 <- paste("0/0:", sample(10:100, length(sample$mutations), replace=T), ":", sample(0:99, length(sample$mutations), replace=T), sep = "")
+  gr$FORMAT <- "GT:GQ"
+  gr$SAMPLE1 <- sample1
+  gr$SAMPLE2 <- sample2
   
   return (gr)
 }

@@ -7,6 +7,7 @@
 ##INFO=<ID=PROB,Number=2,Type=Integer,Description="Posteriors for each signature">
 ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype Quality">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
 ##contig=<ID=1,length=249250621,assembly="hg19">
 ##contig=<ID=2,length=243199373,assembly="hg19">
 ##contig=<ID=3,length=198022430,assembly="hg19">
