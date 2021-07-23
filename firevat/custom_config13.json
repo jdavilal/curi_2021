@@ -1,0 +1,27 @@
+[
+  {
+    "name": "Sample1GQ",
+    "direction": "POS",
+    "field": {
+      "field_type": "FORMAT",
+      "column_header": "SAMPLE1",
+      "key": "GQ",
+      "index": 1
+    },
+    "default": 50,
+    "type": "integer",
+    "use_in_filter": true
+  }, {
+    "name": "Sample2GQ",
+    "direction": "POS",
+    "field": {
+      "field_type": "FORMAT",
+      "column_header": "SAMPLE2",
+      "key": "GQ",
+      "index": 1
+    },
+    "default": 50,
+    "type": "integer",
+    "use_in_filter": true
+  }
+]
