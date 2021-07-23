@@ -263,10 +263,10 @@ probabilities.MMR <- vector(mode = "list", length = 99)
 truth.MMR <- vector(mode = "list", length = 99)
 
 for (x in seq(10, num.mut-1, by = 10)){
-  sample.sig6 <- create_signature_sample_vector(cosmic.sig6, x)
-  sig6.truth <- rep("MMR", x)
-  sample.ffpe <- create_signature_sample_vector(ffpe.sig, num.mut-x)
-  ffpe.truth <- rep("FFPE", num.mut-x)
+  sample.ffpe <- create_signature_sample_vector(ffpe.sig, x)
+  ffpe.truth <- rep("FFPE", x)
+  sample.sig6 <- create_signature_sample_vector(cosmic.sig6, num.mut-x)
+  sig6.truth <- rep("MMR", num.mut-x)
   test <- get_classification_df(list(sample.sig6, sample.ffpe), c("MMR","FFPE"),
                                 list(cosmic.sig6, ffpe.sig))
   classification <- test %>%
@@ -283,10 +283,10 @@ probabilities.tob <- vector(mode = "list", length = 99)
 truth.tob <- vector(mode = "list", length = 99)
 
 for (x in seq(10, num.mut-1, by = 10)){
-  sample.sig4 <- create_signature_sample_vector(cosmic.sig4, x)
-  sig4.truth <- rep("Tobacco", x)
-  sample.ffpe <- create_signature_sample_vector(ffpe.sig, num.mut-x)
-  ffpe.truth <- rep("FFPE", num.mut-x)
+  sample.ffpe <- create_signature_sample_vector(ffpe.sig, x)
+  ffpe.truth <- rep("FFPE", x)
+  sample.sig4 <- create_signature_sample_vector(cosmic.sig4, num.mut-x)
+  sig4.truth <- rep("Tobacco", num.mut-x)
   test <- get_classification_df(list(sample.sig4, sample.ffpe), c("Tobacco","FFPE"),
                                 list(cosmic.sig4, ffpe.sig))
   classification <- test %>%
@@ -309,7 +309,7 @@ test.tob <- prediction(probabilities.tob, truth.tob)
 ```{r}
 AVG.sens.MMR <- vector(mode = "list", length = 99)
 
-for (iteration in 1:20){
+for (iteration in 1:50){
   sens.MMR <- performance(test.MMR, measure = "sens")
   
   for(ind in 1:length(sens.MMR@x.values)){
@@ -344,7 +344,7 @@ for (avg in 1:length(AVG.sens.MMR)){
 ```{r}
 AVG.sens.tob <- vector(mode = "list", length = 99)
 
-for(iteration in 1:20){
+for(iteration in 1:50){
   sens.tob <- performance(test.tob, measure = "sens")
   
   for(ind in 1:length(sens.tob@x.values)){
@@ -377,13 +377,21 @@ for (avg in 1:length(AVG.sens.tob)){
 ### Sensitivity across signatures
 
 ```{r}
-plot(1:99, sens.MMR.vec, ylim = c(0,1), xlab = "Percent of each signature", 
-     ylab = "Sensitivity value", type = "l", main = "Comparing performance characteristics")
-lines(1:99, sens.tob.vec, lty = 2)
-abline(h = 0.85, col = "red")
-legend("bottomright", c("MMR sensitivity", "Tobacco sensitivity", 
-                        "Satisfactory Sensitivity"),
-       lty = c(1,2,1), col = c("black", "black", "red"))
+sensitivity = append(sens.MMR.vec, sens.tob.vec)
+signature.sens = append(rep("MMR", length(sens.MMR.vec)),
+                        rep("Tobacco", length(sens.tob.vec)))
+dilution = append(1:99, 1:99)
+sens.df <- data.frame(dilution, sensitivity, signature.sens)
+
+ggplot(data = sens.df, mapping = aes(x = dilution, 
+                                     y = sensitivity, 
+                                     color = signature.sens)) +
+  geom_point() +
+  geom_smooth() +
+  labs(title = "Sensitivity as a function of FFPE noise",
+       x = "Percent of FFPE noise in samples",
+       y = "Sensitivity value",
+       color = "True signal")
 ```
 
 ## Specificity
@@ -461,11 +469,19 @@ for (avg in 1:length(AVG.spec.tob)){
 ### Specificity across all signatures
 
 ```{r}
-plot(1:99, spec.MMR.vec, ylim = c(0,1), xlab = "Percent of each signature", 
-     ylab = "Specificity value", type = "l", main = "Comparing performance characteristics")
-lines(1:99, spec.tob.vec, lty = 2)
-abline(h = 0.85, col = "red")
-legend("bottomleft", c("MMR specificity", "Tobacco specificity", 
-                       "Satisfactory Specificity"),
-       lty = c(1,2,1), col = c("black", "black", "red"))
+specificity = append(spec.MMR.vec, spec.tob.vec)
+signature.spec = append(rep("MMR", length(sens.MMR.vec)),
+                        rep("Tobacco", length(spec.tob.vec)))
+dilution = append(1:99, 1:99)
+spec.df <- data.frame(dilution, specificity, signature.spec)
+
+ggplot(data = spec.df, mapping = aes(x = dilution, 
+                                     y = specificity, 
+                                     color = signature.sens)) +
+  geom_point() +
+  geom_smooth() +
+  labs(title = "Specificity as a function of FFPE noise",
+       x = "Percent of FFPE noise in samples",
+       y = "Specificity value",
+       color = "True signal")
 ```
