@@ -131,6 +131,44 @@ plot_96_profile(ex.sim.sample)+
   labs(title = "Simulated Sample Profile")
 ```
 
+# ROC curve
+
+```{r}
+sample.sig6 <- create_signature_sample_vector(signature.6.mat, 500)
+sig6.truth <- rep("MMR", 500)
+sample.ffpe <- create_signature_sample_vector(ffpe.signature, 500)
+ffpe.truth <- rep("FFPE", 500)
+MMR.ROC <- get_classification_df(list(sample.sig6, sample.ffpe), c("MMR","FFPE"),
+                              list(signature.matrix.list[[6]], ffpe.sig))
+
+sample.sig4 <- create_signature_sample_vector(signature.4.mat, 500)
+sig4.truth <- rep("Tobacco", 500)
+tob.ROC <- get_classification_df(list(sample.sig4, sample.ffpe), c("Tobacco","FFPE"),
+                              list(signature.matrix.list[[4]], ffpe.sig))
+```
+
+```{r}
+MMR.ROC <- MMR.ROC %>%
+  #create binary labels
+  mutate(truthMMR = ifelse(truth == "MMR",1,0))
+
+tob.ROC <- tob.ROC %>%
+  mutate(truthTob = ifelse(truth == "Tobacco",1,0))
+
+#provide predictions and labels
+MMR.pred <- prediction(MMR.ROC$MMR, MMR.ROC$truthMMR)
+MMR.perf <- performance(test.pred, measure = "tpr", x.measure = "fpr")
+tob.pred <- prediction(tob.ROC$Tobacco, tob.ROC$truthTob)
+tob.perf <- performance(tob.pred, measure = "tpr", x.measure = "fpr")
+plot(MMR.perf, colorize=TRUE, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7),
+     main = "ROC curve of classifier", lty = 2) #ROC
+plot(tob.perf, colorize=TRUE, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7), 
+     add = TRUE, lty = 3)
+abline(a=0, b= 1)
+legend("bottom", c("MMR with FFPE noise", "Tobacco with FFPE noise"),
+       lty = 2:3)
+```
+
 
 #Scatterplot of Average AUC vs. Cosine Similarity to FFPE
 ```{r}
@@ -391,7 +429,8 @@ ggplot(data = sens.df, mapping = aes(x = dilution,
   labs(title = "Sensitivity as a function of FFPE noise",
        x = "Percent of FFPE noise in samples",
        y = "Sensitivity value",
-       color = "True signal")
+       color = "True signal") +
+  coord_cartesian(ylim = c(0,1))
 ```
 
 ## Specificity
@@ -483,5 +522,6 @@ ggplot(data = spec.df, mapping = aes(x = dilution,
   labs(title = "Specificity as a function of FFPE noise",
        x = "Percent of FFPE noise in samples",
        y = "Specificity value",
-       color = "True signal")
+       color = "True signal") +
+  coord_cartesian(ylim = c(0,1))
 ```
