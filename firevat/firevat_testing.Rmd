@@ -1,6 +1,8 @@
 ---
 title: "firevat_testing"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -11,26 +13,32 @@ library(bedr)
 library(stringr)
 library(MutationalPatterns)
 library(BSgenome)
-ref_genome <- "BSgenome.Hsapiens.UCSC.hg19"
+ref_genome <- "BSgenome.Hsapiens.UCSC.hg38"
 library(ref_genome, character.only = TRUE)
 library(ROCR)
 
 source("../simulation.R")
 source("../sample_conversions.R")
+source("../get_classification_df.R")
+source("../bayes_function.R")
 
 seq <- getSeq(Hsapiens, "chr1")
+
+knitr::opts_chunk$set(warning=FALSE)
 ```
 
-```{r}
+```{r echo=FALSE}
+df.sigs
+
+(PCAWG.All.Sequencing.Artifact.Signatures)
 run <- function(signature = "SBS6", default = 0) {
   
-  if (default == 0) {
-    # Run FIREVAT
+  # Run FIREVAT
     results <- RunFIREVAT(vcf.file = sample.vcf.file,
                           vcf.file.genome = 'hg38', # for mouse variants: 'mm10'
                           config.file = config.file,
                           df.ref.mut.sigs = df.sigs,
-                          target.mut.sigs = c(signature, "ffpe.sig"),
+                          target.mut.sigs = c("SBS6", "SBS4", "ffpe.sig"),
                           sequencing.artifact.mut.sigs = c("ffpe.sig"),
                           output.dir = output.dir,
                           objective.fn = Default.Obj.Fn,
@@ -40,23 +48,6 @@ run <- function(signature = "SBS6", default = 0) {
                           ga.run = 5,
                           perform.strand.bias.analysis = FALSE,
                           annotate = FALSE)
-  } else if (default == 1) {
-    # Run FIREVAT
-    results <- RunFIREVAT(vcf.file = sample.vcf.file,
-                          vcf.file.genome = 'hg19', # for mouse variants: 'mm10'
-                          config.file = config.file,
-                          df.ref.mut.sigs = GetPCAWGMutSigs(),
-                          target.mut.sigs = GetPCAWGMutSigsNames(),
-                          sequencing.artifact.mut.sigs = PCAWG.All.Sequencing.Artifact.Signatures,
-                          output.dir = output.dir,
-                          objective.fn = Default.Obj.Fn,
-                          num.cores = 2,
-                          ga.pop.size = 100,
-                          ga.max.iter = 5,
-                          ga.run = 5,
-                          perform.strand.bias.analysis = FALSE,
-                          annotate = FALSE)
-  }
 }
 
 get_roc_point <- function(df) {
@@ -87,18 +78,21 @@ get_roc_point <- function(df) {
 }
 ```
 
-```{r}
+```{r echo=FALSE}
 cosmic.sigs <- get_known_signatures()
 cosmic.sig6 <- as.matrix(cosmic.sigs[,6])
 cosmic.sig4 <- as.matrix(cosmic.sigs[,4])
-ffpe.sig <- as.matrix(load_old_mutational_matrix("../ROC_Curves/supplied_results/ffpe.signature.txt", "../supplied_results/mut_sig.order.txt")) # Doesn't work
+ffpe.sig <- as.matrix(load_old_mutational_matrix("../ROC_Curves/supplied_results/ffpe.signature.txt", "../supplied_results/mut_sig.order.txt"))
+
+rownames(cosmic.sig6) <- rownames(ffpe.sig)
+rownames(cosmic.sig4) <- rownames(ffpe.sig)
 
 df.sigs <- data.frame(GetPCAWGMutSigs()[1:3], cosmic.sigs, ffpe.sig)
 rownames(df.sigs) <- seq(1, 96)
 ```
 
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 sample.sig6 <- create_signature_sample_vector(cosmic.sig6, 100)
 sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
 
@@ -120,14 +114,14 @@ mean(sample1.firevat.df$misclassification)
 mean(sample1.df$misclassification)
 
 roc.point <- get_roc_point(sample1.firevat.df)
-get_roc_point(sample1.df)
+get_roc_point(sample1.firevat.df)
 
 sample1.df <- sample1.df %>%
   mutate(binaryTruth = ifelse(truth == "MMR", 1, 0))
 
 sample1.prediction <- prediction(sample1.df$MMR, sample1.df$binaryTruth)
 sample1.perf <- performance(sample1.prediction, "tpr", "fpr")
-plot(sample1.perf)
+plot(sample1.perf, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7))
 points(x=roc.point[1], y=roc.point[2])
 ```
 
@@ -153,14 +147,14 @@ mean(sample2.firevat.df$misclassification)
 mean(sample2.df$misclassification)
 
 roc.point <- get_roc_point(sample2.firevat.df)
-get_roc_point(sample2.df)
+get_roc_point(sample2.firevat.df)
 
 sample2.df <- sample2.df %>%
   mutate(binaryTruth = ifelse(truth == "MMR", 1, 0))
 
 sample2.prediction <- prediction(sample2.df$MMR, sample2.df$binaryTruth)
 sample2.perf <- performance(sample2.prediction, "tpr", "fpr")
-plot(sample2.perf)
+plot(sample2.perf, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7))
 points(x=roc.point[1], y=roc.point[2])
 ```
 
@@ -168,7 +162,10 @@ points(x=roc.point[1], y=roc.point[2])
 sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 100)
 sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
 
-sample3.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("MMR", "FFPE"), list(cosmic.sig4, ffpe.sig))
+signature_cosine_similarity(sample.sig4, cosmic.sig4)
+plot_96_profile(as.matrix(table(sample.sig4)))
+
+sample3.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
 
 write_sample_to_vcf(sample3.df, "sample3.vcf", Hsapiens, "chr1")
 
@@ -186,22 +183,22 @@ mean(sample3.firevat.df$misclassification)
 mean(sample3.df$misclassification)
 
 roc.point <- get_roc_point(sample3.firevat.df)
-get_roc_point(sample3.df)
+get_roc_point(sample3.firevat.df)
 
 sample3.df <- sample3.df %>%
-  mutate(binaryTruth = ifelse(truth == "MMR", 1, 0))
+  mutate(binaryTruth = ifelse(truth == "SIG4", 1, 0))
 
 sample3.prediction <- prediction(sample3.df$MMR, sample3.df$binaryTruth)
 sample3.perf <- performance(sample3.prediction, "tpr", "fpr")
-plot(sample3.perf)
+plot(sample3.perf, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7))
 points(x=roc.point[1], y=roc.point[2])
 ```
 
 ```{r}
-sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 500)
-sample.ffpe <- create_signature_sample_vector(ffpe.sig, 500)
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 900)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
 
-sample4.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("MMR", "FFPE"), list(cosmic.sig4, ffpe.sig))
+sample4.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
 
 write_sample_to_vcf(sample4.df, "sample4.vcf", Hsapiens, "chr1")
 
@@ -212,6 +209,8 @@ output.dir <- "./"
 run("SBS4")
 ```
 
+
+
 ```{r}
 sample4.firevat.df <- create_classify_df("sample4.vcf", seq)
 
@@ -219,25 +218,291 @@ mean(sample4.firevat.df$misclassification)
 mean(sample4.df$misclassification)
 
 roc.point <- get_roc_point(sample4.firevat.df)
-get_roc_point(sample4.df)
+get_roc_point(sample4.firevat.df)
 
 sample4.df <- sample4.df %>%
-  mutate(binaryTruth = ifelse(truth == "MMR", 1, 0))
+  mutate(binaryTruth = ifelse(truth == "SIG4", 1, 0))
 
 sample4.prediction <- prediction(sample4.df$MMR, sample4.df$binaryTruth)
 sample4.perf <- performance(sample4.prediction, "tpr", "fpr")
-plot(sample4.perf)
+plot(sample4.perf, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7))
 points(x=roc.point[1], y=roc.point[2])
 ```
 
 
+```{r message=FALSE, warning=FALSE}
+sample.sig6 <- create_signature_sample_vector(cosmic.sig6, 900)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample5.df <- get_classification_df(list(sample.sig6, sample.ffpe), c("MMR", "FFPE"), list(cosmic.sig6, ffpe.sig))
+
+write_sample_to_vcf(sample5.df, "sample5.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample5.vcf"
+config.file <- "../custom_config.json"
+output.dir <- "./"
+
+run("SBS4")
+```
+
+```{r}
+sample5.firevat.df <- create_classify_df("sample5.vcf", seq)
+
+mean(sample5.firevat.df$misclassification)
+mean(sample5.df$misclassification)
+
+roc.point <- get_roc_point(sample5.firevat.df)
+get_roc_point(sample5.firevat.df)
+
+sample5.df <- sample5.df %>%
+  mutate(binaryTruth = ifelse(truth == "MMR", 1, 0))
+
+sample5.prediction <- prediction(sample5.df$MMR, sample5.df$binaryTruth)
+sample5.perf <- performance(sample5.prediction, "tpr", "fpr")
+plot(sample1.perf, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7))
+points(x=roc.point[1], y=roc.point[2])
+```
+
+```{r}
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample6.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
+
+write_sample_to_vcf(sample6.df, "sample6.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample6.vcf"
+config.file <- "../custom_config.json"
+output.dir <- "./"
+
+run("SBS4")
+```
+
+```{r}
+# two genotype info with one sample only
+
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample7.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
+
+write_sample_to_vcf(sample7.df, "sample7.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample7.vcf"
+config.file <- "../custom_config.json"
+output.dir <- "./"
+
+run("SBS4")
+
+# Doesn't work
+```
+
+```{r}
+# No sample, config looks at info column DP and PROB index 1
+
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample8.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
+
+write_sample_to_vcf(sample8.df, "sample8.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample8.vcf"
+config.file <- "custom_config8.json"
+output.dir <- "./"
+
+run("SBS4")
+```
+
+```{r}
+
+# Look at Position
+
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample9.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
+
+write_sample_to_vcf(sample9.df, "sample9.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample9.vcf"
+config.file <- "custom_config9.json"
+output.dir <- "./"
+
+run("SBS4")
+
+# DOesn't work
+
+```
+
+```{r}
+# No sample, config looks at PROB index 1 and 2
+
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample10.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
+
+write_sample_to_vcf(sample10.df, "sample10.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample10.vcf"
+config.file <- "custom_config10.json"
+output.dir <- "./"
+
+run("SBS4")
+```
+
+```{r}
+# One sample looking only at GQ from 30 - 60
+
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample11.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
+
+write_sample_to_vcf(sample11.df, "sample11.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample11.vcf"
+config.file <- "custom_config11.json"
+output.dir <- "./"
+
+run("SBS4")
+
+# Doesn't work
+```
+
+```{r}
+# two sample looking only at GQ from 30 - 60
+
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample12.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
+
+sample12.df <- sample12.df[sample(nrow(sample12.df)),]
+
+write_sample_to_vcf(sample12.df, "sample12.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample12.vcf"
+config.file <- "custom_config12.json"
+output.dir <- "./"
+
+run("SBS4")
+```
+
+```{r}
+# two sample looking only at GQ from 30 - 60 but random ordering
+
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample13.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
+
+sample13.df <- sample13.df[sample(nrow(sample13.df)),]
+
+write_sample_to_vcf(sample13.df, "sample13.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample13.vcf"
+config.file <- "custom_config13.json"
+output.dir <- "./"
+
+run("SBS4")
+```
+
+```{r}
+# two sample looking only at GQ with defined distributiona and random ordering
+
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample14.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
+
+sample13.df <- sample14.df[sample(nrow(sample14.df)),]
+=
+write_sample_to_vcf(sample14.df, "sample14.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample14.vcf"
+config.file <- "custom_config13.json"
+output.dir <- "./"
+
+run("SBS4")
+```
+
+```{r}
+as.matrix(table(sample14.df$mutations))
+
+cos_sim_matrix(as.matrix(table(sample14.df$mutations)), as.matrix(GetPCAWGMutSigs()[7]))
+
+as.matrix(GetPCAWGMutSigs()[7]
+```
+
+```{r}
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample15.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
+
+sample15.df <- sample15.df[sample(nrow(sample14.df)),]
+
+write_sample_to_vcf(sample15.df, "sample15.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample15.vcf"
+config.file <- "../custom_config.json"
+output.dir <- ""
+
+run("SBS4")
+```
+
+```{r}
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 26)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 26)
+
+sample16.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
+
+sample16.df <- sample16.df[sample(nrow(sample16.df)),]
+
+write_sample_to_vcf(sample16.df, "sample16.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample13.vcf"
+config.file <- "custom_config13.json"
+output.dir <- ""
+
+run("SBS4")
+```
+
+```{r}
+sample.sig4 <- create_signature_sample_vector(cosmic.sig4, 100)
+sample.ffpe <- create_signature_sample_vector(ffpe.sig, 100)
+
+sample13a.df <- get_classification_df(list(sample.sig4, sample.ffpe), c("SIG4", "FFPE"), list(cosmic.sig4, ffpe.sig))
+
+sample13a.df <- sample13a.df[sample(nrow(sample13a.df)),]
+
+write_sample_to_vcf(sample13a.df, "sample13a.vcf", Hsapiens, "chr1")
+
+sample.vcf.file <- "sample13a.vcf"
+config.file <- "custom_config13.json"
+output.dir <- ""
+
+run("SBS4")
+```
 
 
+```{r}
+sample13.firevat.df <- create_classify_df("sample13a.vcf", seq)
 
+mean(sample13.firevat.df$misclassification)
+mean(sample13.df$misclassification)
 
+roc.point <- get_roc_point(sample13.firevat.df)
+get_roc_point(sample13.firevat.df)
 
+sample13.df <- sample13.df %>%
+  mutate(binaryTruth = ifelse(truth == "SIG4", 1, 0))
 
-
-
-
+sample13.prediction <- prediction(sample13.df$SIG4, sample13.df$binaryTruth)
+sample13.perf <- performance(sample13.prediction, "tpr", "fpr")
+plot(sample13.perf, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7))
+points(x=roc.point[1], y=roc.point[2])
+```
 
