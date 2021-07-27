@@ -2,7 +2,9 @@
 title: "Abstract Plots"
 author: "Audrey Mitchell"
 date: "7/21/2021"
-output: html_document
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -90,9 +92,15 @@ ffpe.sample <- create_signature_sample_vector(ffpe.signature, 100)
 
 ex.ffpe.profile.mat <- vector_to_matrix(c(mmr.sample, tobacco.sample, ffpe.sample))
 rownames(ex.ffpe.profile.mat) <- mutations
+colnames(ex.ffpe.profile.mat) <- c("Sample 1")
 
-plot_96_profile(ex.ffpe.profile.mat)+
-  labs(title = "Mutational Profile")
+mut.profile <- plot_96_profile(ex.ffpe.profile.mat)+
+  labs(title = "Mutational Profile", x = "Context")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+mut.profile
+
+ggsave("mutprofile.png", plot = mut.profile , width = 175, height = 108, units = "mm")
 ```
 
 ```{r}
@@ -100,35 +108,178 @@ sig.mat <- cbind(signature.4.mat, signature.6.mat, ffpe.signature)
 colnames(sig.mat) <- c("Signature 4", "Signature 6", "FFPE")
 fts.res <- fit_to_signatures(ex.ffpe.profile.mat, sig.mat)
 
-plot_contribution(fts.res$contribution, sig.mat, coord_flip = TRUE)+
+contribution.plot <- plot_contribution(fts.res$contribution, sig.mat, coord_flip = TRUE)+
   labs(title = "Relative Contributions of Signatures")+
-  theme(aspect.ratio = 0.3)
+  theme(plot.title = element_text(hjust = 0.5))
+
+contribution.plot
+
+ggsave("contributions.png", plot = contribution.plot , width = 175, height = 54, units = "mm")
 ```
 
 ```{r}
-plot_96_profile(sig.mat)+
-  labs(title = "Mutational Signatures")
+signatures.plot <- plot_96_profile(sig.mat)+
+  labs(title = "Mutational Signatures", x = "Context")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+signatures.plot
+
+ggsave("signatures.png", plot = signatures.plot , width = 175, height = 108, units = "mm")
 ```
 
 #Diagram of Simulating Data
 ```{r}
-plot_96_profile(signature.4.mat)+
-  labs(title = "Signature 4")
+signature4.plot <- plot_96_profile(signature.4.mat)+
+  labs(title = "Signature 4", x = "Context")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave("signature4.png", plot = signature4.plot , width = 175, height = 81, units = "mm")
 ```
 
 ```{r}
-plot_96_profile(ffpe.signature)+
-  labs(title = "FFPE Signature")
+ffpe.plot <- plot_96_profile(ffpe.signature)+
+  labs(title = "FFPE Signature", x = "Context")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave("ffpe.png", plot = ffpe.plot , width = 175, height = 81, units = "mm")
 ```
 
 ```{r}
-sample.4 <- create_signature_sample_vector(signature.4.mat, 100)
-sample.ffpe <- create_signature_sample_vector(ffpe.signature, 100)
+sample.4 <- create_signature_sample_vector(signature.4.mat, 500)
+sample.ffpe <- create_signature_sample_vector(ffpe.signature, 500)
 
 ex.sim.sample.vec <- c(sample.4, sample.ffpe)
 ex.sim.sample <- vector_to_matrix(ex.sim.sample.vec)
-plot_96_profile(ex.sim.sample)+
-  labs(title = "Simulated Sample Profile")
+
+sampleprof.plot <- plot_96_profile(ex.sim.sample)+
+  labs(title = "Simulated Sample Profile", x = "Context")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+sampleprof.plot
+
+ggsave("sampleprofile.png", plot = sampleprof.plot , width = 175, height = 108, units = "mm")
+```
+
+#Reconstructed Profiles of Signatures 4 and 6
+
+```{r}
+#Create Signature 4 Sample
+sig4.500 <- create_signature_sample_vector(signature.4.mat, 500)
+sig4.profile <- vector_to_matrix(sig4.500)
+
+sig4.profile.plot <- plot_96_profile(sig4.profile)+
+  labs(title = "Signature 4 Simulated Sample", x = "Context")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+sig4.profile.plot
+```
+
+```{r}
+#Add FFPE Noise
+addffpe.500 <- create_signature_sample_vector(ffpe.signature, 500)
+
+sig4.ffpe <- vector_to_matrix(c(sig4.500, addffpe.500))
+
+sig4.ffpe.plot <- plot_96_profile(sig4.ffpe)+
+  labs(title = "Simulated Sample with FFPE Noise", x = "Context")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+#Classify and Filter
+sig4.ffpe.class <- get_classification_df(list(sig4.500, addffpe.500), c("SBS4", "FFPE"), list(signature.4.mat, ffpe.signature))
+
+sig4.ffpe.filtered <- sig4.ffpe.class %>%
+  filter(classify != "FFPE")
+
+sig4.recon.matrix <- vector_to_matrix(sig4.ffpe.filtered$mutations)
+
+sig4.recon.plot <- plot_96_profile(sig4.recon.matrix)+
+  labs(title = "Signature 4 Reconstructed", x = "Context")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+sig4.recon.plot
+```
+
+```{r}
+#Calculate Sensitivity
+
+sig4.sensitivity <- sig4.ffpe.class %>%
+  filter(truth == "SBS4" & classify == "SBS4")
+
+nrow(sig4.sensitivity)/500
+
+sig4.specificity <- sig4.ffpe.class %>%
+  filter(truth == "FFPE" & classify == "FFPE")
+
+nrow(sig4.specificity)/500
+```
+
+```{r}
+#Arrange 3 plots
+sig4.reconstruction <- grid.arrange(sig4.profile.plot, sig4.ffpe.plot, sig4.recon.plot)
+
+ggsave("sig4reconstruction.png", plot = sig4.reconstruction , width = 175, height = 243, units = "mm")
+```
+
+```{r}
+#Create Signature 6 Sample
+sig6.500 <- create_signature_sample_vector(signature.6.mat, 500)
+sig6.profile <- vector_to_matrix(sig6.500)
+
+sig6.profile.plot <- plot_96_profile(sig6.profile)+
+  labs(title = "Signature 6 Simulated Sample", x = "Context")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+sig6.profile.plot
+```
+
+```{r}
+#Add FFPE Noise
+sig6.ffpe <- vector_to_matrix(c(sig6.500, addffpe.500))
+
+sig6.ffpe.plot <- plot_96_profile(sig6.ffpe)+
+  labs(title = "Simulated Sample with FFPE Noise", x = "Context")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+sig6.ffpe.plot
+```
+
+```{r}
+#Classify and Filter
+sig6.ffpe.class <- get_classification_df(list(sig6.500, addffpe.500), c("SBS6", "FFPE"), list(signature.6.mat, ffpe.signature))
+
+sig6.ffpe.filtered <- sig6.ffpe.class %>%
+  filter(classify != "FFPE")
+
+sig6.recon.matrix <- vector_to_matrix(sig6.ffpe.filtered$mutations)
+
+sig6.recon.plot <- plot_96_profile(sig6.recon.matrix)+
+  labs(title = "Signature 6 Reconstructed", x = "Context")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+sig6.recon.plot
+```
+
+```{r}
+#Calculate Sensitivity
+
+sig6.sensitivity <- sig6.ffpe.class %>%
+  filter(truth == "SBS6" & classify == "SBS6")
+
+nrow(sig6.sensitivity)/500
+
+sig6.specificity <- sig6.ffpe.class %>%
+  filter(truth == "FFPE" & classify == "FFPE")
+
+nrow(sig6.specificity)/500
+```
+
+```{r}
+#Arrange 3 plots
+sig6.reconstruction <- grid.arrange(sig6.profile.plot, sig6.ffpe.plot, sig6.recon.plot)
+
+ggsave("sig6reconstruction.png", plot = sig6.reconstruction , width = 175, height = 243, units = "mm")
 ```
 
 # ROC curve
@@ -157,7 +308,7 @@ tob.ROC <- tob.ROC %>%
 
 #provide predictions and labels
 MMR.pred <- prediction(MMR.ROC$MMR, MMR.ROC$truthMMR)
-MMR.perf <- performance(test.pred, measure = "tpr", x.measure = "fpr")
+MMR.perf <- performance(MMR.pred, measure = "tpr", x.measure = "fpr")
 tob.pred <- prediction(tob.ROC$Tobacco, tob.ROC$truthTob)
 tob.perf <- performance(tob.pred, measure = "tpr", x.measure = "fpr")
 plot(MMR.perf, colorize=TRUE, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7),
@@ -165,7 +316,7 @@ plot(MMR.perf, colorize=TRUE, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7),
 plot(tob.perf, colorize=TRUE, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7), 
      add = TRUE, lty = 3)
 abline(a=0, b= 1)
-legend("bottom", c("MMR with FFPE noise", "Tobacco with FFPE noise"),
+legend("bottom", c("Signature 6 with FFPE noise", "Signature 4 with FFPE noise"),
        lty = 2:3)
 ```
 
