@@ -175,8 +175,9 @@ model2_summary <- summary(model2)
 cos.sim.auc.data$residuals <- model2_summary$residuals
 
 cos.sim.auc.outliers <- cos.sim.auc.data %>%
-  filter(residuals >= quantile(cos.sim.auc.data$residuals, 0.95) | 
-         residuals <= quantile(cos.sim.auc.data$residuals, 0.05))
+  filter(residuals >= quantile(cos.sim.auc.data$residuals, 0.90) | 
+         residuals <= quantile(cos.sim.auc.data$residuals, 0.10) |
+           signature %in% c("SBS4"))
 ```
 
 ```{r}

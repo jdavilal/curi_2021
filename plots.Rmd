@@ -270,9 +270,9 @@ for (x in 1:60){
   #inner for loop: calculate misclassification rate 10x for each signature
   for (y in 1:10){
     #create a sample vector of 100 mutations for the COSMIC signature corresponding to number x
-    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],100)
+    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],500)
     #Create FFPE sample vector of 100 mutations
-    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 100)
+    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 500)
     classification.df.1 <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[x],"FFPE"), list(signature.matrix.list[[x]], ffpe.signature))
     class.df.colnames <- colnames(classification.df.1)
     sig.name <- class.df.colnames[3]
@@ -304,19 +304,43 @@ model2_summary <- summary(model2)
 cos.sim.auc.data$residuals <- model2_summary$residuals
 
 cos.sim.auc.outliers <- cos.sim.auc.data %>%
-  filter(residuals >= quantile(cos.sim.auc.data$residuals, 0.95) | 
-         residuals <= quantile(cos.sim.auc.data$residuals, 0.05))
+  filter(residuals >= quantile(cos.sim.auc.data$residuals, 0.90) | 
+         residuals <= quantile(cos.sim.auc.data$residuals, 0.10) | 
+         signature %in% c("SBS4"))
 ```
 
 ```{r}
-ggplot(cos.sim.auc.data, aes(x = cosine_similarity, y = average_auc))+
+auc.scatter <- ggplot(cos.sim.auc.data, aes(x = cosine_similarity, y = average_auc))+
   geom_point()+
-  geom_smooth(method = "lm")+
-  labs(title = "Average area under curve vs. cosine similarity to FFPE", x = "Cosine similarity of COSMIC signature to FFPE signature", y = "Average area under curve (10 iterations)")+
-  geom_point(data = cos.sim.auc.outliers, color = "red")+
-  geom_label_repel(data = cos.sim.auc.outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)
+  geom_smooth(method = "lm", color = mycolor[2], se = FALSE)+
+  labs(title = "Average Area Under Curve vs. Cosine Similarity to FFPE", x = "Cosine similarity of COSMIC signature to FFPE signature", y = "Average area under curve (10 iterations)")+
+  geom_point(data = cos.sim.auc.outliers, color = mycolor [1])+
+  geom_label_repel(data = cos.sim.auc.outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave("aucscatter.png", plot = auc.scatter, width = 175, height = 108, units = "mm")
   
 ```
+
+```{r}
+cos.sim.histogram <- ggplot(data = cos.sim.auc.data, aes(x = cosine_similarity))+
+  geom_histogram(fill = mycolor[2], bins = 20)+
+  labs(title = "Distribution of Cosine Simlarities Between COSMIC Signatures and FFPE", x = "Cosine Similarity", y = "Count")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave("cossimhistogram.png", plot = cos.sim.histogram, width = 175, height = 108, units = "mm")
+```
+
+
+```{r}
+auc.histogram <- ggplot(data = cos.sim.auc.data, aes(x = average_auc))+
+  geom_histogram(fill = mycolor[2], bins = 20)+
+  labs(title = "Distribution of Average AUC Values", x = "Average AUC", y = "Count")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave("auchistogram.png", plot = auc.histogram, width = 175, height = 108, units = "mm")
+```
+
 
 #Varying total number of mutations (Signature 4)
 
@@ -658,9 +682,9 @@ for (x in 1:60){
   #inner for loop: calculate misclassification rate 10x for each signature
   for (y in 1:10){
     #create a sample vector of 100 mutations for the COSMIC signature corresponding to number x
-    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],100)
+    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],500)
     #Create FFPE sample vector of 100 mutations
-    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 100)
+    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 500)
     classification.df <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[x],"FFPE"), list(signature.matrix.list[[x]], ffpe.signature))
     class.df.colnames <- colnames(classification.df)
     sig.name <- class.df.colnames[3]
@@ -668,14 +692,14 @@ for (x in 1:60){
     sensitivity.df <- classification.df %>%
       filter(truth == sig.name & classify == sig.name)
     #Calculate sensitivity
-    sensitivity.val = nrow(sensitivity.df)/100
+    sensitivity.val = nrow(sensitivity.df)/500
     #Add to the vector of 10 sensitivity values
     signature.sensitivity.vec[y] = sensitivity.val
     #Count number of true negatives (for specificity)
     specificity.df <- classification.df %>%
       filter(truth == "FFPE" & classify == "FFPE")
     #Calculate specificity
-    specificity.val = nrow(specificity.df)/100
+    specificity.val = nrow(specificity.df)/500
     #Add to the vector of 10 specificity values
     signature.specificity.vec[y] = specificity.val
   }
@@ -698,8 +722,65 @@ sens.spec.data.2 <- sens.spec.data %>%
 ```{r}
 ggplot(data = sens.spec.data.2, aes(x = cosine_similarity, y = value, color = measure))+
   geom_point()+
-  geom_smooth(method = lm)+
-  labs(title = "Sensitivity & Specificity vs. Cosine Similarity to FFPE Signature", x = "Cosine Similarity of COSMIC Signature to FFPE", y = "Sensitivity and Specificity")
+  geom_smooth(method = lm, se = FALSE)+
+  labs(title = "Sensitivity & Specificity vs. Cosine Similarity to FFPE Signature", x = "Cosine Similarity of COSMIC Signature to FFPE", y = "Average Sensitivity and Specificity (10 iterations)")+
+  scale_color_brewer(palette = "Set1")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+mycolor <- brewer.pal(3, "Set1")
+
+sensitivity.histogram <- ggplot(data = sens.spec.data, aes(x = sensitivity))+
+  geom_histogram(fill = mycolor[2], bins = 20)+
+  labs(title = "Distribution of Average Sensitivities", x = "Sensitivity", y = "Count")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave("sensitivityhistogram.png", plot = sensitivity.histogram, width = 175, height = 108, units = "mm")
+```
+
+```{r}
+specificity.histogram <- ggplot(data = sens.spec.data, aes(x = specificity))+
+  geom_histogram(fill = mycolor[2], bins = 20)+
+  labs(title = "Distribution of Average Specificities", x = "Specificity", y = "Count")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave("specificityhistogram.png", plot = specificity.histogram, width = 175, height = 108, units = "mm")
+```
+
+```{r}
+sens.spec.label.points <- sens.spec.data %>%
+  filter(signature %in% c("SBS38", "SBS4", "SBS89", "SBS3", "SBS33", "SBS44", "SBS31", "SBS40", "SBS42", "SBS23", "SBS19", "SBS11", "SBS30"))
 ```
 
 
+```{r}
+sensitivity.scatter <- ggplot(data = sens.spec.data, mapping = aes(x = cosine_similarity, y = sensitivity))+
+  geom_point()+
+  geom_smooth(method = "lm", se = FALSE, color = mycolor[2])+
+  labs(title = "Average Sensitivity vs. Cosine Similarity to FFPE", x = "Cosine similarity of COSMIC signature to FFPE signature", y = "Average sensitivity (10 iterations)")+
+  geom_point(data = sens.spec.label.points, color = mycolor [1])+
+  geom_label_repel(data = sens.spec.label.points, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
+  theme(plot.title = element_text(hjust = 0.5))
+  
+sensitivity.scatter
+
+ggsave("sensitivityscatter.png", plot = sensitivity.scatter, width = 175, height = 108, units = "mm")
+```
+
+```{r}
+specificity.scatter <- ggplot(data = sens.spec.data, mapping = aes(x = cosine_similarity, y = specificity))+
+  geom_point()+
+  geom_smooth(method = "lm", se = FALSE, color = mycolor[2])+
+  labs(title = "Average Specificity vs. Cosine Similarity to FFPE", x = "Cosine similarity of COSMIC signature to FFPE signature", y = "Average specificity (10 iterations)")+
+  geom_point(data = sens.spec.label.points, color = mycolor [1])+
+  geom_label_repel(data = sens.spec.label.points, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
+  theme(plot.title = element_text(hjust = 0.5))
+
+specificity.scatter
+
+ggsave("specificityscatter.png", plot = specificity.scatter, width = 175, height = 108, units = "mm")
+```
+
+
+  
