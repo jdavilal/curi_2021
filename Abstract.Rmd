@@ -526,3 +526,228 @@ ggplot(data = spec.df, mapping = aes(x = dilution,
        color = "True signal") +
   coord_cartesian(ylim = c(0,1))
 ```
+
+
+# Mutational load performance characteristics
+
+## Mutational load predictions
+
+```{r}
+step = seq(50, 1000, by = 50)
+MMR.probabilities <- vector(mode = "list", length = length(step))
+MMR.truth <- vector(mode = "list", length = length(step))
+
+for (x in 1:length(step)){
+  sample.ffpe <- create_signature_sample_vector(ffpe.sig, step[x]/2)
+  ffpe.truth <- rep("FFPE", step[x]/2)
+  sample.sig6 <- create_signature_sample_vector(cosmic.sig6, step[x]/2)
+  sig6.truth <- rep("MMR", step[x]/2)
+  test <- get_classification_df(list(sample.sig6, sample.ffpe), c("MMR","FFPE"),
+                                list(cosmic.sig6, ffpe.sig))
+  classification <- test %>%
+    mutate(trueBinary = ifelse(truth == "MMR",1,0))
+
+  MMR.probabilities[[x]] <- classification$MMR
+  MMR.truth[[x]] <- classification$trueBinary
+}
+```
+
+```{r}
+step = seq(50, 1000, by = 50)
+tob.probabilities <- vector(mode = "list", length = length(step))
+tob.truth <- vector(mode = "list", length = length(step))
+
+for (x in 1:length(step)){
+  sample.ffpe <- create_signature_sample_vector(ffpe.sig, step[x]/2)
+  ffpe.truth <- rep("FFPE", step[x]/2)
+  sample.sig4 <- create_signature_sample_vector(cosmic.sig4, step[x]/2)
+  sig4.truth <- rep("tob", step[x]/2)
+  test <- get_classification_df(list(sample.sig4, sample.ffpe), c("Tobacco","FFPE"),
+                                list(cosmic.sig4, ffpe.sig))
+  classification <- test %>%
+    mutate(trueBinary = ifelse(truth == "Tobacco",1,0))
+
+  tob.probabilities[[x]] <- classification$Tobacco
+  tob.truth[[x]] <- classification$trueBinary
+}
+```
+
+```{r}
+load.MMR <- prediction(MMR.probabilities, MMR.truth)
+load.tob <- prediction(tob.probabilities, tob.truth)
+```
+
+## Sensitivity
+
+```{r}
+AVG.sens.MMR <- vector(mode = "list", length = length(step))
+
+for (iteration in 1:100){
+  sens.MMR <- performance(load.MMR, measure = "sens")
+  
+  for(ind in 1:length(sens.MMR@x.values)){
+    thresh = as.vector(slot(sens.MMR, "x.values")[[ind]])
+    sens = as.vector(slot(sens.MMR, "y.values")[[ind]])
+    if (length(thresh) > 2){
+      if (identical(which(thresh<=0.5), integer(0))){
+        AVG.sens.MMR[[ind]][iteration] = NA
+      }
+      else{
+        low.ind = max(which(thresh >=0.5))
+        high.ind = min(which(thresh <=0.5))
+        #point slop formula of a line
+        slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
+        AVG.sens.MMR[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
+      }
+    }
+    else{
+      AVG.sens.MMR[[ind]][iteration] = NA
+    }
+  }
+}
+
+load.sens.MMR.vec = c()
+for (avg in 1:length(AVG.sens.MMR)){
+  load.sens.MMR.vec[avg] = mean(AVG.sens.MMR[[avg]], na.rm = TRUE)
+}
+```
+
+```{r}
+AVG.sens.tob <- vector(mode = "list", length = length(step))
+
+for (iteration in 1:100){
+  sens.tob <- performance(load.tob, measure = "sens")
+  
+  for(ind in 1:length(sens.tob@x.values)){
+    thresh = as.vector(slot(sens.tob, "x.values")[[ind]])
+    sens = as.vector(slot(sens.tob, "y.values")[[ind]])
+    if (length(thresh) > 2){
+      if (identical(which(thresh<=0.5), integer(0))){
+        AVG.sens.tob[[ind]][iteration] = NA
+      }
+      else{
+        low.ind = max(which(thresh >=0.5))
+        high.ind = min(which(thresh <=0.5))
+        #point slop formula of a line
+        slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
+        AVG.sens.tob[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
+      }
+    }
+    else{
+      AVG.sens.tob[[ind]][iteration] = NA
+    }
+  }
+}
+
+load.sens.tob.vec = c()
+for (avg in 1:length(AVG.sens.tob)){
+  load.sens.tob.vec[avg] = mean(AVG.sens.tob[[avg]], na.rm = TRUE)
+}
+```
+
+```{r}
+#plot(step, load.sens.MMR.vec, ylim = c(0,1))
+sensitivity = append(load.sens.MMR.vec, load.sens.tob.vec)
+signature.sens = append(rep("MMR", length(load.sens.MMR.vec)),
+                        rep("Tobacco", length(load.sens.tob.vec)))
+dilution = append(step, step)
+sens.df <- data.frame(dilution, sensitivity, signature.sens)
+
+ggplot(data = sens.df, mapping = aes(x = dilution, 
+                                     y = sensitivity, 
+                                     color = signature.sens)) +
+  geom_point() +
+  geom_smooth() +
+  labs(title = "Specificity as a function of mutational load",
+       x = "Number of mutations in each sample",
+       y = "Specificity value") +
+  coord_cartesian(ylim = c(0,1))
+```
+
+## Specificity
+
+```{r}
+AVG.spec.MMR <- vector(mode = "list", length = length(step))
+
+for (iteration in 1:100){
+  spec.MMR <- performance(load.MMR, measure = "spec")
+  
+  for(ind in 1:length(spec.MMR@x.values)){
+    thresh = as.vector(slot(spec.MMR, "x.values")[[ind]])
+    spec = as.vector(slot(spec.MMR, "y.values")[[ind]])
+    if (length(thresh) > 2){
+      if (identical(which(thresh<=0.5), integer(0))){
+        AVG.spec.MMR[[ind]][iteration] = NA
+      }
+      else{
+        low.ind = max(which(thresh >=0.5))
+        high.ind = min(which(thresh <=0.5))
+        #point slop formula of a line
+        slope = (spec[high.ind] - spec[low.ind]) / (thresh[high.ind] - thresh[low.ind])
+        AVG.spec.MMR[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + spec[low.ind]
+      }
+    }
+    else{
+      AVG.spec.MMR[[ind]][iteration] = NA
+    }
+  }
+}
+
+load.spec.MMR.vec = c()
+for (avg in 1:length(AVG.spec.MMR)){
+  load.spec.MMR.vec[avg] = mean(AVG.spec.MMR[[avg]], na.rm = TRUE)
+}
+```
+
+```{r}
+AVG.spec.tob <- vector(mode = "list", length = length(step))
+
+for (iteration in 1:100){
+  spec.tob <- performance(load.tob, measure = "spec")
+  
+  for(ind in 1:length(spec.tob@x.values)){
+    thresh = as.vector(slot(spec.tob, "x.values")[[ind]])
+    spec = as.vector(slot(spec.tob, "y.values")[[ind]])
+    if (length(thresh) > 2){
+      if (identical(which(thresh<=0.5), integer(0))){
+        AVG.spec.tob[[ind]][iteration] = NA
+      }
+      else{
+        low.ind = max(which(thresh >=0.5))
+        high.ind = min(which(thresh <=0.5))
+        #point slop formula of a line
+        slope = (spec[high.ind] - spec[low.ind]) / (thresh[high.ind] - thresh[low.ind])
+        AVG.spec.tob[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + spec[low.ind]
+      }
+    }
+    else{
+      AVG.spec.tob[[ind]][iteration] = NA
+    }
+  }
+}
+
+load.spec.tob.vec = c()
+for (avg in 1:length(AVG.spec.tob)){
+  load.spec.tob.vec[avg] = mean(AVG.spec.tob[[avg]], na.rm = TRUE)
+}
+```
+
+```{r}
+#plot(step, load.spec.MMR.vec, ylim = c(0,1))
+
+specificity = append(load.spec.MMR.vec, load.spec.tob.vec)
+signature.spec = append(rep("MMR", length(load.spec.MMR.vec)),
+                        rep("Tobacco", length(load.spec.tob.vec)))
+dilution = append(step, step)
+spec.df <- data.frame(dilution, specificity, signature.spec)
+
+ggplot(data = spec.df, mapping = aes(x = dilution, 
+                                     y = specificity, 
+                                     color = signature.spec)) +
+  geom_point() +
+  geom_smooth() +
+  labs(title = "Specificity as a function of mutational load",
+       x = "Number of mutations in each sample",
+       y = "Specificity value") +
+  coord_cartesian(ylim = c(0,1))
+```
