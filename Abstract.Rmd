@@ -654,18 +654,21 @@ percent.FFPE = rep(c("10%", "30%", "50%", "70%", "90%"),
                    length(signature.names)*iteration.num)
 #vectorize lists
 signature = unlist(signature)
+acc = unlist(acc)
 sens = unlist(sens)
 spec = unlist(spec)
 
 #convert into data frame
-table = data.frame(percent.FFPE, signature, sens, spec)
+table = data.frame(percent.FFPE, signature, sens, spec, acc)
 
 #avg the multiple sensitivity/specificity values for each dilution and each signature
 table <- table %>%
   group_by(percent.FFPE, signature) %>%
   summarize(sens = mean(sens, na.rm = TRUE),
             spec = mean(spec, na.rm = TRUE),
-            acc = mean(acc, na.rm = TRUE))
+            acc = mean(acc, na.rm = TRUE)) %>%
+  mutate(signature = factor(signature, signature.names)) %>%
+  arrange(signature)
 ```
 
 # Mutational load performance characteristics
