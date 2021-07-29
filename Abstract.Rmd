@@ -315,9 +315,9 @@ MMR.pred <- prediction(MMR.ROC$MMR, MMR.ROC$truthMMR)
 MMR.perf <- performance(MMR.pred, measure = "tpr", x.measure = "fpr")
 tob.pred <- prediction(tob.ROC$Tobacco, tob.ROC$truthTob)
 tob.perf <- performance(tob.pred, measure = "tpr", x.measure = "fpr")
-plot(MMR.perf, colorize=TRUE, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7),
+plot(MMR.perf, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7),
      main = "ROC curve of classifier", lty = 2) #ROC
-plot(tob.perf, colorize=TRUE, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7), 
+plot(tob.perf, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7), 
      add = TRUE, lty = 3)
 abline(a=0, b= 1)
 legend("bottom", c("Signature 6 with FFPE noise", "Signature 4 with FFPE noise"),
@@ -452,129 +452,109 @@ ffpe.sig = ffpe.signature
 ## Dilution predictions
 
 ```{r}
-num.mut=1000
-probabilities.MMR <- vector(mode = "list", length = 99)
-truth.MMR <- vector(mode = "list", length = 99)
+num.mut = 1000
+step = seq(50, 950, by = 50)
+```
 
-for (x in seq(10, num.mut-1, by = 10)){
-  sample.ffpe <- create_signature_sample_vector(ffpe.sig, x)
-  ffpe.truth <- rep("FFPE", x)
-  sample.sig6 <- create_signature_sample_vector(cosmic.sig6, num.mut-x)
-  sig6.truth <- rep("MMR", num.mut-x)
+
+```{r}
+probabilities.MMR <- vector(mode = "list", length = length(step))
+truth.MMR <- vector(mode = "list", length = length (step))
+
+for (x in 1:length(step)){
+  sample.ffpe <- create_signature_sample_vector(ffpe.sig, step[x])
+  ffpe.truth <- rep("FFPE", step[x])
+  sample.sig6 <- create_signature_sample_vector(cosmic.sig6, num.mut-step[x])
+  sig6.truth <- rep("MMR", num.mut-step[x])
   test <- get_classification_df(list(sample.sig6, sample.ffpe), c("MMR","FFPE"),
                                 list(cosmic.sig6, ffpe.sig))
   classification <- test %>%
     mutate(trueBinary = ifelse(truth == "MMR",1,0))
 
-  probabilities.MMR[[x/10]] <- classification$MMR
-  truth.MMR[[x/10]] <- classification$trueBinary
+  probabilities.MMR[[x]] <- classification$MMR
+  truth.MMR[[x]] <- classification$trueBinary
 }
 ```
 
 ```{r}
-num.mut=1000
-probabilities.tob <- vector(mode = "list", length = 99)
-truth.tob <- vector(mode = "list", length = 99)
+probabilities.tob <- vector(mode = "list", length = length(step))
+truth.tob <- vector(mode = "list", length = length(step))
 
-for (x in seq(10, num.mut-1, by = 10)){
-  sample.ffpe <- create_signature_sample_vector(ffpe.sig, x)
-  ffpe.truth <- rep("FFPE", x)
-  sample.sig4 <- create_signature_sample_vector(cosmic.sig4, num.mut-x)
-  sig4.truth <- rep("Tobacco", num.mut-x)
+for (x in 1:length(step)){
+  sample.ffpe <- create_signature_sample_vector(ffpe.sig, step[x])
+  ffpe.truth <- rep("FFPE", step[x])
+  sample.sig4 <- create_signature_sample_vector(cosmic.sig4, num.mut-step[x])
+  sig4.truth <- rep("Tobacco", num.mut-step[x])
   test <- get_classification_df(list(sample.sig4, sample.ffpe), c("Tobacco","FFPE"),
                                 list(cosmic.sig4, ffpe.sig))
   classification <- test %>%
     mutate(trueBinary = ifelse(truth == "Tobacco",1,0))
 
-  probabilities.tob[[x/10]] <- classification$Tobacco
-  truth.tob[[x/10]] <- classification$trueBinary
+  probabilities.tob[[x]] <- classification$Tobacco
+  truth.tob[[x]] <- classification$trueBinary
 }
 ```
+
 
 ```{r}
 test.MMR <- prediction(probabilities.MMR, truth.MMR)
 test.tob <- prediction(probabilities.tob, truth.tob)
 ```
 
+```{r}
+evaluate_perf <- function(num_iter, length, pred_obj, perf_method){
+  AVG.sens <- vector(mode = "list", length = length)
+  
+  for (iteration in 1:num_iter){
+  sens.obj <- performance(pred_obj, measure = perf_method)
+  
+  for(ind in 1:length(sens.obj@x.values)){
+    thresh = as.vector(slot(sens.obj, "x.values")[[ind]])
+    sens = as.vector(slot(sens.obj, "y.values")[[ind]])
+    if (length(thresh) > 2){
+      if (identical(which(thresh<=0.5), integer(0))){
+        AVG.sens[[ind]][iteration] = NA
+      }
+      else{
+        low.ind = max(which(thresh >=0.5))
+        high.ind = min(which(thresh <=0.5))
+        #point slop formula of a line
+        slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
+        AVG.sens[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
+      }
+    }
+    else{
+      AVG.sens[[ind]][iteration] = NA
+        }
+      }
+    }
+
+  sens.vec = c()
+  for (avg in 1:length(AVG.sens)){
+    sens.vec[avg] = mean(AVG.sens[[avg]], na.rm = TRUE)
+  }
+  
+  return(sens.vec)
+}
+```
+
 ## Sensitivity
 
-### Sensitivity/MMR
-
 ```{r}
-AVG.sens.MMR <- vector(mode = "list", length = 99)
-
-for (iteration in 1:50){
-  sens.MMR <- performance(test.MMR, measure = "sens")
-  
-  for(ind in 1:length(sens.MMR@x.values)){
-    thresh = as.vector(slot(sens.MMR, "x.values")[[ind]])
-    sens = as.vector(slot(sens.MMR, "y.values")[[ind]])
-    if (length(thresh) > 2){
-      if (identical(which(thresh<=0.5), integer(0))){
-        AVG.sens.MMR[[ind]][iteration] = NA
-      }
-      else{
-        low.ind = max(which(thresh >=0.5))
-        high.ind = min(which(thresh <=0.5))
-        #point slop formula of a line
-        slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
-        AVG.sens.MMR[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
-      }
-    }
-    else{
-      AVG.sens.MMR[[ind]][iteration] = NA
-    }
-  }
-}
-
-sens.MMR.vec = c()
-for (avg in 1:length(AVG.sens.MMR)){
-  sens.MMR.vec[avg] = mean(AVG.sens.MMR[[avg]], na.rm = TRUE)
-}
+sens.MMR.vec = evaluate_perf(100, length(step), test.MMR, "sens")
 ```
 
-### Sensitivity/Tobacco
-
 ```{r}
-AVG.sens.tob <- vector(mode = "list", length = 99)
-
-for(iteration in 1:50){
-  sens.tob <- performance(test.tob, measure = "sens")
-  
-  for(ind in 1:length(sens.tob@x.values)){
-    thresh = as.vector(slot(sens.tob, "x.values")[[ind]])
-    sens = as.vector(slot(sens.tob, "y.values")[[ind]])
-    if (length(thresh) > 2){
-      if (identical(which(thresh<=0.5), integer(0))){
-        AVG.sens.tob[[ind]][iteration] = NA
-      }
-      else{
-        low.ind = max(which(thresh >=0.5))
-        high.ind = min(which(thresh <=0.5))
-        #point slop formula of a line
-        slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
-        AVG.sens.tob[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
-      }
-    }
-    else{
-      AVG.sens.tob[[ind]][iteration] = NA
-    }
-  }
-}
-
-sens.tob.vec = c()
-for (avg in 1:length(AVG.sens.tob)){
-  sens.tob.vec[avg] = mean(AVG.sens.tob[[avg]], na.rm = TRUE)
-}
+sens.tob.vec = evaluate_perf(100, length(step), test.tob, "sens")
 ```
 
-### Sensitivity across signatures
+### Sensitivity plot
 
 ```{r}
 sensitivity = append(sens.MMR.vec, sens.tob.vec)
-signature.sens = append(rep("MMR", length(sens.MMR.vec)),
-                        rep("Tobacco", length(sens.tob.vec)))
-dilution = append(1:99, 1:99)
+signature.sens = append(rep("Signature 6", length(sens.MMR.vec)),
+                        rep("Signature 4", length(sens.tob.vec)))
+dilution = append(step/10, step/10)
 sens.df <- data.frame(dilution, sensitivity, signature.sens)
 
 ggplot(data = sens.df, mapping = aes(x = dilution, 
@@ -586,88 +566,23 @@ ggplot(data = sens.df, mapping = aes(x = dilution,
        x = "Percent of FFPE noise in samples",
        y = "Sensitivity value",
        color = "True signal") +
-  coord_cartesian(ylim = c(0,1))
+  coord_cartesian(xlim = c(0,100), ylim = c(0,1))
 ```
 
 ## Specificity
 
-### Specificity/MMR
-
 ```{r}
-AVG.spec.MMR <- vector(mode = "list", length = 99)
-
-for(iteration in 1:20){
-  spec.MMR <- performance(test.MMR, measure = "spec")
-  
-  for(ind in 1:length(spec.MMR@x.values)){
-    thresh = as.vector(slot(spec.MMR, "x.values")[[ind]])
-    spec = as.vector(slot(spec.MMR, "y.values")[[ind]])
-    if (length(thresh) > 2){
-      if (identical(which(thresh<=0.5), integer(0))){
-        AVG.spec.MMR[[ind]][iteration] = NA
-      }
-      else{
-        low.ind = max(which(thresh >=0.5))
-        high.ind = min(which(thresh <=0.5))
-        #point slop formula of a line
-        slope = (spec[high.ind] - spec[low.ind]) / (thresh[high.ind] - thresh[low.ind])
-        AVG.spec.MMR[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + spec[low.ind]
-      }
-    }
-    else{
-      AVG.spec.MMR[[ind]][iteration] = NA
-    }
-  }
-}
-
-spec.MMR.vec = c()
-for (avg in 1:length(AVG.spec.MMR)){
-  spec.MMR.vec[avg] = mean(AVG.spec.MMR[[avg]], na.rm = TRUE)
-}
+spec.MMR.vec = evaluate_perf(100, length(step), test.MMR, "spec")
+spec.tob.vec = evaluate_perf(100, length(step), test.tob, "spec")
 ```
 
-### Specificity/Tobacco
-
-```{r}
-AVG.spec.tob <- vector(mode = "list", length = 99)
-
-for (iteration in 1:20){
-  spec.tob <- performance(test.tob, measure = "spec")
-  
-  for(ind in 1:length(spec.tob@x.values)){
-    thresh = as.vector(slot(spec.tob, "x.values")[[ind]])
-    spec = as.vector(slot(spec.tob, "y.values")[[ind]])
-    if (length(thresh) > 2){
-      if (identical(which(thresh<=0.5), integer(0))){
-        AVG.spec.tob[[ind]][iteration] = NA
-      }
-      else{
-        low.ind = max(which(thresh >=0.5))
-        high.ind = min(which(thresh <=0.5))
-        #point slop formula of a line
-        slope = (spec[high.ind] - spec[low.ind]) / (thresh[high.ind] - thresh[low.ind])
-        AVG.spec.tob[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + spec[low.ind]
-      }
-    }
-    else{
-      AVG.spec.tob[[ind]][iteration] = NA
-    }
-  }
-}
-
-spec.tob.vec = c()
-for (avg in 1:length(AVG.spec.tob)){
-  spec.tob.vec[avg] = mean(AVG.spec.tob[[avg]], na.rm = TRUE)
-}
-```
-
-### Specificity across all signatures
+### Specificity plot
 
 ```{r}
 specificity = append(spec.MMR.vec, spec.tob.vec)
-signature.spec = append(rep("MMR", length(sens.MMR.vec)),
-                        rep("Tobacco", length(spec.tob.vec)))
-dilution = append(1:99, 1:99)
+signature.spec = append(rep("Signature 6", length(sens.MMR.vec)),
+                        rep("Signature 4", length(spec.tob.vec)))
+dilution = append(step/10, step/10)
 spec.df <- data.frame(dilution, specificity, signature.spec)
 
 ggplot(data = spec.df, mapping = aes(x = dilution, 
@@ -677,6 +592,177 @@ ggplot(data = spec.df, mapping = aes(x = dilution,
   geom_smooth() +
   labs(title = "Specificity as a function of FFPE noise",
        x = "Percent of FFPE noise in samples",
+       y = "Specificity value",
+       color = "True signal") +
+  coord_cartesian(xlim = c(0,100), ylim = c(0,1))
+```
+
+## File of all signatures diluted with FFPE noise
+
+```{r}
+#columns in data frame
+sens = vector(mode = "list", length = length(signature.names))
+spec = vector(mode = "list", length = length(signature.names))
+signature = vector(mode = "list", length = length(signature.names))
+
+#create data frame values 10 times
+iteration.num = 3
+for (iteration in 1:iteration.num){
+  #iterate through each signature
+  for (sig.num in 1:length(signature.names)){
+    #store name of signature (once for every dilution)
+    signature[[sig.num]] = append(signature[[sig.num]],
+                                  rep(signature.names[sig.num], 5))
+    #store values generated by get_classification_df for each dilution
+    probabilities <- vector(mode = "list", length = 5)
+    truth <- vector(mode = "list", length = 5)
+    #initialize accumulator
+    i = 1
+      #each signature is diluted with 10%, 30%, 50%, 70%, and 90% FFPE noise
+      # (1000 mutations total each time)
+      for (x in c(100, 300, 500, 700, 900)){
+        #create some percent of FFPE noise
+        sample.ffpe <- create_signature_sample_vector(ffpe.signature, x)
+        ffpe.truth <- rep("FFPE", x)
+        #fill the rest with true signal
+        sample <- create_signature_sample_vector(signature.matrix.list[[sig.num]], 1000-x)
+        sample.truth <- rep(signature.names[sig.num], 1000-x)
+        #evaluate using Bayes
+        test <- get_classification_df(list(sample, sample.ffpe), 
+                                      c(signature.names[sig.num],"FFPE"),
+                                      list(signature.matrix.list[[sig.num]],
+                                           ffpe.signature))
+        #truth column turned into binary for ROCR package
+        classification <- test %>%
+          mutate(trueBinary = ifelse(truth == signature.names[sig.num],1,0))
+        #store probabilities and truths for particular dilution
+        probabilities[[i]] <- classification[[3]]
+        truth[[i]] <- classification$trueBinary
+        i = i + 1
+      }
+    #evaluate all 5 dilution samples
+    pred = prediction(probabilities, truth)
+    sens[[sig.num]] = append(sens[[sig.num]], evaluate_perf(100, 5, pred, "sens"))
+    spec[[sig.num]] = append(spec[[sig.num]], evaluate_perf(100, 5, pred, "spec"))
+  }
+}
+
+#vector indicating dilution amount
+percent.FFPE = rep(c("10%", "30%", "50%", "70%", "90%"),
+                   length(signature.names)*iteration.num)
+#vectorize lists
+signature = unlist(signature)
+sens = unlist(sens)
+spec = unlist(spec)
+
+#convert into data frame
+table = data.frame(percent.FFPE, signature, sens, spec)
+
+#avg the multiple sensitivity/specificity values for each dilution and each signature
+table <- table %>%
+  group_by(percent.FFPE, signature) %>%
+  summarize(sens = mean(sens, na.rm = TRUE),
+            spec = mean(spec, na.rm = TRUE))
+```
+
+# Mutational load performance characteristics
+
+## Mutational load predictions
+
+```{r}
+step_load = seq(50, 1000, by = 50)
+MMR.probabilities <- vector(mode = "list", length = length(step))
+MMR.truth <- vector(mode = "list", length = length(step))
+
+for (x in 1:length(step)){
+  sample.ffpe <- create_signature_sample_vector(ffpe.sig, step[x]/2)
+  ffpe.truth <- rep("FFPE", step[x]/2)
+  sample.sig6 <- create_signature_sample_vector(cosmic.sig6, step[x]/2)
+  sig6.truth <- rep("MMR", step[x]/2)
+  test <- get_classification_df(list(sample.sig6, sample.ffpe), c("MMR","FFPE"),
+                                list(cosmic.sig6, ffpe.sig))
+  classification <- test %>%
+    mutate(trueBinary = ifelse(truth == "MMR",1,0))
+
+  MMR.probabilities[[x]] <- classification$MMR
+  MMR.truth[[x]] <- classification$trueBinary
+}
+```
+
+```{r}
+tob.probabilities <- vector(mode = "list", length = length(step))
+tob.truth <- vector(mode = "list", length = length(step))
+
+for (x in 1:length(step)){
+  sample.ffpe <- create_signature_sample_vector(ffpe.sig, step[x]/2)
+  ffpe.truth <- rep("FFPE", step[x]/2)
+  sample.sig4 <- create_signature_sample_vector(cosmic.sig4, step[x]/2)
+  sig4.truth <- rep("tob", step[x]/2)
+  test <- get_classification_df(list(sample.sig4, sample.ffpe), c("Tobacco","FFPE"),
+                                list(cosmic.sig4, ffpe.sig))
+  classification <- test %>%
+    mutate(trueBinary = ifelse(truth == "Tobacco",1,0))
+
+  tob.probabilities[[x]] <- classification$Tobacco
+  tob.truth[[x]] <- classification$trueBinary
+}
+```
+
+```{r}
+load.MMR <- prediction(MMR.probabilities, MMR.truth)
+load.tob <- prediction(tob.probabilities, tob.truth)
+```
+
+## Sensitivity
+
+```{r}
+load.sens.MMR.vec = evaluate_perf(100, length(step_load), load.MMR, "sens")
+load.sens.tob.vec = evaluate_perf(100, length(step_load), load.tob, "sens")
+```
+
+```{r}
+#plot(step, load.sens.MMR.vec, ylim = c(0,1))
+sensitivity = append(load.sens.MMR.vec, load.sens.tob.vec)
+signature.sens = append(rep("MMR", length(load.sens.MMR.vec)),
+                        rep("Tobacco", length(load.sens.tob.vec)))
+dilution = append(step, step)
+sens.df <- data.frame(dilution, sensitivity, signature.sens)
+
+ggplot(data = sens.df, mapping = aes(x = dilution, 
+                                     y = sensitivity, 
+                                     color = signature.sens)) +
+  geom_point() +
+  geom_smooth() +
+  labs(title = "Sensitivity as a function of mutational load",
+       x = "Number of mutations in each sample",
+       y = "Sensitivity value",
+       color = "True signal") +
+  coord_cartesian(ylim = c(0,1))
+```
+
+## Specificity
+
+```{r}
+load.spec.MMR.vec = evaluate_perf(100, length(step.load), load.MMR, "spec")
+load.spec.tob.vec = evaluate_perf(100, length(step.load), load.tob, "spec")
+```
+
+```{r}
+#plot(step, load.spec.MMR.vec, ylim = c(0,1))
+
+specificity = append(load.spec.MMR.vec, load.spec.tob.vec)
+signature.spec = append(rep("MMR", length(load.spec.MMR.vec)),
+                        rep("Tobacco", length(load.spec.tob.vec)))
+dilution = append(step, step)
+spec.df <- data.frame(dilution, specificity, signature.spec)
+
+ggplot(data = spec.df, mapping = aes(x = dilution, 
+                                     y = specificity, 
+                                     color = signature.spec)) +
+  geom_point() +
+  geom_smooth() +
+  labs(title = "Specificity as a function of mutational load",
+       x = "Number of mutations in each sample",
        y = "Specificity value",
        color = "True signal") +
   coord_cartesian(ylim = c(0,1))
