@@ -599,6 +599,7 @@ ggplot(data = spec.df, mapping = aes(x = dilution,
 #columns in data frame
 sens = vector(mode = "list", length = length(signature.names))
 spec = vector(mode = "list", length = length(signature.names))
+acc = vector(mode = "list", length = length(signature.names))
 signature = vector(mode = "list", length = length(signature.names))
 
 #create data frame values 10 times
@@ -638,8 +639,9 @@ for (iteration in 1:iteration.num){
       }
     #evaluate all 5 dilution samples
     pred = prediction(probabilities, truth)
-    sens[[sig.num]] = append(sens[[sig.num]], evaluate_perf(100, 5, pred, "sens"))
-    spec[[sig.num]] = append(spec[[sig.num]], evaluate_perf(100, 5, pred, "spec"))
+    acc[[sig.num]] = append(acc[[sig.num]], evaluate_perf(50, 5, pred, "acc"))
+    sens[[sig.num]] = append(sens[[sig.num]], evaluate_perf(50, 5, pred, "sens"))
+    spec[[sig.num]] = append(spec[[sig.num]], evaluate_perf(50, 5, pred, "spec"))
   }
 }
 
@@ -658,7 +660,8 @@ table = data.frame(percent.FFPE, signature, sens, spec)
 table <- table %>%
   group_by(percent.FFPE, signature) %>%
   summarize(sens = mean(sens, na.rm = TRUE),
-            spec = mean(spec, na.rm = TRUE))
+            spec = mean(spec, na.rm = TRUE),
+            acc = mean(acc, na.rm = TRUE))
 ```
 
 # Mutational load performance characteristics
