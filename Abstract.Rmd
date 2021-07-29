@@ -2,7 +2,7 @@
 title: "Abstract Plots"
 author: "Audrey Mitchell"
 date: "7/21/2021"
-output: html_notebook
+output: html_document
 editor_options: 
   chunk_output_type: console
 ---
@@ -202,7 +202,7 @@ sig4.recon.plot
 ```
 
 ```{r}
-#Calculate Sensitivity
+#Calculate Sensitivity, Specificity, and Misclassification rate
 
 sig4.sensitivity <- sig4.ffpe.class %>%
   filter(truth == "SBS4" & classify == "SBS4")
@@ -213,6 +213,8 @@ sig4.specificity <- sig4.ffpe.class %>%
   filter(truth == "FFPE" & classify == "FFPE")
 
 nrow(sig4.specificity)/500
+
+mean(sig4.ffpe.class$misclassification)
 ```
 
 ```{r}
@@ -262,7 +264,7 @@ sig6.recon.plot
 ```
 
 ```{r}
-#Calculate Sensitivity
+#Calculate Sensitivity, specificity, and misclassification rate
 
 sig6.sensitivity <- sig6.ffpe.class %>%
   filter(truth == "SBS6" & classify == "SBS6")
@@ -273,6 +275,8 @@ sig6.specificity <- sig6.ffpe.class %>%
   filter(truth == "FFPE" & classify == "FFPE")
 
 nrow(sig6.specificity)/500
+
+mean(sig6.ffpe.class$misclassification)
 ```
 
 ```{r}
@@ -330,7 +334,7 @@ for (x in 1:length(signature.names)){
   #inner for loop: calculate misclassification rate 10x for each signature
   for (y in 1:10){
     #create a sample vector of 100 mutations for the COSMIC signature corresponding to number x
-    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],100)
+    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],500)
     #Create FFPE sample vector of 100 mutations
     ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 100)
     classification.df.1 <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[x],"FFPE"), list(signature.matrix.list[[x]], ffpe.signature))

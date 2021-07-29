@@ -295,6 +295,14 @@ colnames(cos.sim.auc.data) <- c("signature", "cosine_similarity", "average_auc")
 ```
 
 ```{r}
+#Summary Statistics for cos.sim.auc.data
+summary(cos.sim.auc.data)
+IQR(cos.sim.auc.data$cosine_similarity)
+IQR(cos.sim.auc.data$average_auc)
+```
+
+
+```{r}
 model2 <- lm(average_auc ~ cosine_similarity, data = cos.sim.auc.data)
 
 summary(model2)
@@ -306,7 +314,7 @@ cos.sim.auc.data$residuals <- model2_summary$residuals
 cos.sim.auc.outliers <- cos.sim.auc.data %>%
   filter(residuals >= quantile(cos.sim.auc.data$residuals, 0.90) | 
          residuals <= quantile(cos.sim.auc.data$residuals, 0.10) | 
-         signature %in% c("SBS4"))
+         signature %in% c("SBS4", "SBS6"))
 ```
 
 ```{r}
@@ -317,6 +325,8 @@ auc.scatter <- ggplot(cos.sim.auc.data, aes(x = cosine_similarity, y = average_a
   geom_point(data = cos.sim.auc.outliers, color = mycolor [1])+
   geom_label_repel(data = cos.sim.auc.outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
   theme(plot.title = element_text(hjust = 0.5))
+
+auc.scatter
 
 ggsave("aucscatter.png", plot = auc.scatter, width = 175, height = 108, units = "mm")
   
@@ -750,7 +760,7 @@ ggsave("specificityhistogram.png", plot = specificity.histogram, width = 175, he
 
 ```{r}
 sens.spec.label.points <- sens.spec.data %>%
-  filter(signature %in% c("SBS38", "SBS4", "SBS89", "SBS3", "SBS33", "SBS44", "SBS31", "SBS40", "SBS42", "SBS23", "SBS19", "SBS11", "SBS30"))
+  filter(signature %in% c("SBS38", "SBS4", "SBS6","SBS89", "SBS3", "SBS33", "SBS44", "SBS31", "SBS40", "SBS42", "SBS23", "SBS19", "SBS11", "SBS30"))
 ```
 
 
@@ -782,5 +792,44 @@ specificity.scatter
 ggsave("specificityscatter.png", plot = specificity.scatter, width = 175, height = 108, units = "mm")
 ```
 
+```{r}
+sensitivity.model <- lm(sensitivity ~ cosine_similarity, data = sens.spec.data)
+summary(sensitivity.model)
+```
 
-  
+```{r}
+specificity.model <- lm(specificity ~ cosine_similarity, data = sens.spec.data)
+summary(specificity.model)
+```
+
+```{r}
+auc.model <- lm(average_auc ~ cosine_similarity , data = cos.sim.auc.data)
+summary(auc.model)
+```
+
+```{r}
+summary(sens.spec.data)
+IQR(sens.spec.data$sensitivity)
+IQR(sens.spec.data$specificity)
+```
+
+```{r}
+#outer for loop: loop through each COSMIC v3 signature
+average.accuracies <- c()
+for (x in 1:60){
+  signature.accuracy.vec <- c()
+  #inner for loop: calculate misclassification rate 10x for each signature
+  for (y in 1:10){
+    #create a sample vector of 500 mutations for the COSMIC signature corresponding to number x
+    sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],500)
+    #Create FFPE sample vector of 500 mutations
+    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 500)
+    classification.df <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[x],"FFPE"), list(signature.matrix.list[[x]], ffpe.signature))
+    accuracy = 1 - mean(classification.df$misclassification)
+    signature.accuracy.vec[y] <- accuracy
+  }
+  average.signature.accuracy <- mean(signature.accuracy.vec)
+  average.accuracies[x] <- average.signature.accuracy
+}
+```
+
