@@ -491,89 +491,65 @@ for (x in 1:length(step)){
 }
 ```
 
+
 ```{r}
 test.MMR <- prediction(probabilities.MMR, truth.MMR)
 test.tob <- prediction(probabilities.tob, truth.tob)
 ```
 
+```{r}
+evaluate_perf <- function(num_iter, length, pred_obj, perf_method){
+  AVG.sens <- vector(mode = "list", length = length)
+  
+  for (iteration in 1:num_iter){
+  sens.obj <- performance(pred_obj, measure = perf_method)
+  
+  for(ind in 1:length(sens.obj@x.values)){
+    thresh = as.vector(slot(sens.obj, "x.values")[[ind]])
+    sens = as.vector(slot(sens.obj, "y.values")[[ind]])
+    if (length(thresh) > 2){
+      if (identical(which(thresh<=0.5), integer(0))){
+        AVG.sens[[ind]][iteration] = NA
+      }
+      else{
+        low.ind = max(which(thresh >=0.5))
+        high.ind = min(which(thresh <=0.5))
+        #point slop formula of a line
+        slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
+        AVG.sens[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
+      }
+    }
+    else{
+      AVG.sens[[ind]][iteration] = NA
+        }
+      }
+    }
+
+  sens.vec = c()
+  for (avg in 1:length(AVG.sens)){
+    sens.vec[avg] = mean(AVG.sens[[avg]], na.rm = TRUE)
+  }
+  
+  return(sens.vec)
+}
+```
+
 ## Sensitivity
 
-### Sensitivity/MMR
-
 ```{r}
-AVG.sens.MMR <- vector(mode = "list", length =length(step))
-
-for (iteration in 1:50){
-  sens.MMR <- performance(test.MMR, measure = "sens")
-  
-  for(ind in 1:length(sens.MMR@x.values)){
-    thresh = as.vector(slot(sens.MMR, "x.values")[[ind]])
-    sens = as.vector(slot(sens.MMR, "y.values")[[ind]])
-    if (length(thresh) > 2){
-      if (identical(which(thresh<=0.5), integer(0))){
-        AVG.sens.MMR[[ind]][iteration] = NA
-      }
-      else{
-        low.ind = max(which(thresh >=0.5))
-        high.ind = min(which(thresh <=0.5))
-        #point slop formula of a line
-        slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
-        AVG.sens.MMR[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
-      }
-    }
-    else{
-      AVG.sens.MMR[[ind]][iteration] = NA
-    }
-  }
-}
-
-sens.MMR.vec = c()
-for (avg in 1:length(AVG.sens.MMR)){
-  sens.MMR.vec[avg] = mean(AVG.sens.MMR[[avg]], na.rm = TRUE)
-}
+sens.MMR.vec = evaluate_perf(100, length(step), test.MMR, "sens")
 ```
 
-### Sensitivity/Tobacco
-
 ```{r}
-AVG.sens.tob <- vector(mode = "list", length = length(step))
-
-for(iteration in 1:50){
-  sens.tob <- performance(test.tob, measure = "sens")
-  
-  for(ind in 1:length(sens.tob@x.values)){
-    thresh = as.vector(slot(sens.tob, "x.values")[[ind]])
-    sens = as.vector(slot(sens.tob, "y.values")[[ind]])
-    if (length(thresh) > 2){
-      if (identical(which(thresh<=0.5), integer(0))){
-        AVG.sens.tob[[ind]][iteration] = NA
-      }
-      else{
-        low.ind = max(which(thresh >=0.5))
-        high.ind = min(which(thresh <=0.5))
-        #point slop formula of a line
-        slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
-        AVG.sens.tob[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
-      }
-    }
-    else{
-      AVG.sens.tob[[ind]][iteration] = NA
-    }
-  }
-}
-
-sens.tob.vec = c()
-for (avg in 1:length(AVG.sens.tob)){
-  sens.tob.vec[avg] = mean(AVG.sens.tob[[avg]], na.rm = TRUE)
-}
+sens.tob.vec = evaluate_perf(100, length(step), test.tob, "sens")
 ```
 
-### Sensitivity across signatures
+### Sensitivity plot
 
 ```{r}
 sensitivity = append(sens.MMR.vec, sens.tob.vec)
-signature.sens = append(rep("MMR", length(sens.MMR.vec)),
-                        rep("Tobacco", length(sens.tob.vec)))
+signature.sens = append(rep("Signature 6", length(sens.MMR.vec)),
+                        rep("Signature 4", length(sens.tob.vec)))
 dilution = append(step/10, step/10)
 sens.df <- data.frame(dilution, sensitivity, signature.sens)
 
@@ -591,82 +567,17 @@ ggplot(data = sens.df, mapping = aes(x = dilution,
 
 ## Specificity
 
-### Specificity/MMR
-
 ```{r}
-AVG.spec.MMR <- vector(mode = "list", length = length(step))
-
-for(iteration in 1:50){
-  spec.MMR <- performance(test.MMR, measure = "spec")
-  
-  for(ind in 1:length(spec.MMR@x.values)){
-    thresh = as.vector(slot(spec.MMR, "x.values")[[ind]])
-    spec = as.vector(slot(spec.MMR, "y.values")[[ind]])
-    if (length(thresh) > 2){
-      if (identical(which(thresh<=0.5), integer(0))){
-        AVG.spec.MMR[[ind]][iteration] = NA
-      }
-      else{
-        low.ind = max(which(thresh >=0.5))
-        high.ind = min(which(thresh <=0.5))
-        #point slop formula of a line
-        slope = (spec[high.ind] - spec[low.ind]) / (thresh[high.ind] - thresh[low.ind])
-        AVG.spec.MMR[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + spec[low.ind]
-      }
-    }
-    else{
-      AVG.spec.MMR[[ind]][iteration] = NA
-    }
-  }
-}
-
-spec.MMR.vec = c()
-for (avg in 1:length(AVG.spec.MMR)){
-  spec.MMR.vec[avg] = mean(AVG.spec.MMR[[avg]], na.rm = TRUE)
-}
+spec.MMR.vec = evaluate_perf(100, length(step), test.MMR, "spec")
+spec.tob.vec = evaluate_perf(100, length(step), test.tob, "spec")
 ```
 
-### Specificity/Tobacco
-
-```{r}
-AVG.spec.tob <- vector(mode = "list", length = length(step))
-
-for (iteration in 1:50){
-  spec.tob <- performance(test.tob, measure = "spec")
-  
-  for(ind in 1:length(spec.tob@x.values)){
-    thresh = as.vector(slot(spec.tob, "x.values")[[ind]])
-    spec = as.vector(slot(spec.tob, "y.values")[[ind]])
-    if (length(thresh) > 2){
-      if (identical(which(thresh<=0.5), integer(0))){
-        AVG.spec.tob[[ind]][iteration] = NA
-      }
-      else{
-        low.ind = max(which(thresh >=0.5))
-        high.ind = min(which(thresh <=0.5))
-        #point slop formula of a line
-        slope = (spec[high.ind] - spec[low.ind]) / (thresh[high.ind] - thresh[low.ind])
-        AVG.spec.tob[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + spec[low.ind]
-      }
-    }
-    else{
-      AVG.spec.tob[[ind]][iteration] = NA
-    }
-  }
-}
-
-spec.tob.vec = c()
-for (avg in 1:length(AVG.spec.tob)){
-  spec.tob.vec[avg] = mean(AVG.spec.tob[[avg]], na.rm = TRUE)
-}
-```
-
-### Specificity across all signatures
+### Specificity plot
 
 ```{r}
 specificity = append(spec.MMR.vec, spec.tob.vec)
-signature.spec = append(rep("MMR", length(sens.MMR.vec)),
-                        rep("Tobacco", length(spec.tob.vec)))
+signature.spec = append(rep("Signature 6", length(sens.MMR.vec)),
+                        rep("Signature 4", length(spec.tob.vec)))
 dilution = append(step/10, step/10)
 spec.df <- data.frame(dilution, specificity, signature.spec)
 
@@ -682,13 +593,80 @@ ggplot(data = spec.df, mapping = aes(x = dilution,
   coord_cartesian(xlim = c(0,100), ylim = c(0,1))
 ```
 
+## File of all signatures diluted with FFPE noise
+
+```{r}
+#columns in data frame
+sens = vector(mode = "list", length = length(signature.names))
+spec = vector(mode = "list", length = length(signature.names))
+signature = vector(mode = "list", length = length(signature.names))
+
+#create data frame values 10 times
+iteration.num = 3
+for (iteration in 1:iteration.num){
+  #iterate through each signature
+  for (sig.num in 1:length(signature.names)){
+    #store name of signature (once for every dilution)
+    signature[[sig.num]] = append(signature[[sig.num]],
+                                  rep(signature.names[sig.num], 5))
+    #store values generated by get_classification_df for each dilution
+    probabilities <- vector(mode = "list", length = 5)
+    truth <- vector(mode = "list", length = 5)
+    #initialize accumulator
+    i = 1
+      #each signature is diluted with 10%, 30%, 50%, 70%, and 90% FFPE noise
+      # (1000 mutations total each time)
+      for (x in c(100, 300, 500, 700, 900)){
+        #create some percent of FFPE noise
+        sample.ffpe <- create_signature_sample_vector(ffpe.signature, x)
+        ffpe.truth <- rep("FFPE", x)
+        #fill the rest with true signal
+        sample <- create_signature_sample_vector(signature.matrix.list[[sig.num]], 1000-x)
+        sample.truth <- rep(signature.names[sig.num], 1000-x)
+        #evaluate using Bayes
+        test <- get_classification_df(list(sample, sample.ffpe), 
+                                      c(signature.names[sig.num],"FFPE"),
+                                      list(signature.matrix.list[[sig.num]],
+                                           ffpe.signature))
+        #truth column turned into binary for ROCR package
+        classification <- test %>%
+          mutate(trueBinary = ifelse(truth == signature.names[sig.num],1,0))
+        #store probabilities and truths for particular dilution
+        probabilities[[i]] <- classification[[3]]
+        truth[[i]] <- classification$trueBinary
+        i = i + 1
+      }
+    #evaluate all 5 dilution samples
+    pred = prediction(probabilities, truth)
+    sens[[sig.num]] = append(sens[[sig.num]], evaluate_perf(100, 5, pred, "sens"))
+    spec[[sig.num]] = append(spec[[sig.num]], evaluate_perf(100, 5, pred, "spec"))
+  }
+}
+
+#vector indicating dilution amount
+percent.FFPE = rep(c("10%", "30%", "50%", "70%", "90%"),
+                   length(signature.names)*iteration.num)
+#vectorize lists
+signature = unlist(signature)
+sens = unlist(sens)
+spec = unlist(spec)
+
+#convert into data frame
+table = data.frame(percent.FFPE, signature, sens, spec)
+
+#avg the multiple sensitivity/specificity values for each dilution and each signature
+table <- table %>%
+  group_by(percent.FFPE, signature) %>%
+  summarize(sens = mean(sens, na.rm = TRUE),
+            spec = mean(spec, na.rm = TRUE))
+```
 
 # Mutational load performance characteristics
 
 ## Mutational load predictions
 
 ```{r}
-step = seq(50, 1000, by = 50)
+step_load = seq(50, 1000, by = 50)
 MMR.probabilities <- vector(mode = "list", length = length(step))
 MMR.truth <- vector(mode = "list", length = length(step))
 
@@ -708,7 +686,6 @@ for (x in 1:length(step)){
 ```
 
 ```{r}
-step = seq(50, 1000, by = 50)
 tob.probabilities <- vector(mode = "list", length = length(step))
 tob.truth <- vector(mode = "list", length = length(step))
 
@@ -735,69 +712,8 @@ load.tob <- prediction(tob.probabilities, tob.truth)
 ## Sensitivity
 
 ```{r}
-AVG.sens.MMR <- vector(mode = "list", length = length(step))
-
-for (iteration in 1:100){
-  sens.MMR <- performance(load.MMR, measure = "sens")
-  
-  for(ind in 1:length(sens.MMR@x.values)){
-    thresh = as.vector(slot(sens.MMR, "x.values")[[ind]])
-    sens = as.vector(slot(sens.MMR, "y.values")[[ind]])
-    if (length(thresh) > 2){
-      if (identical(which(thresh<=0.5), integer(0))){
-        AVG.sens.MMR[[ind]][iteration] = NA
-      }
-      else{
-        low.ind = max(which(thresh >=0.5))
-        high.ind = min(which(thresh <=0.5))
-        #point slop formula of a line
-        slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
-        AVG.sens.MMR[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
-      }
-    }
-    else{
-      AVG.sens.MMR[[ind]][iteration] = NA
-    }
-  }
-}
-
-load.sens.MMR.vec = c()
-for (avg in 1:length(AVG.sens.MMR)){
-  load.sens.MMR.vec[avg] = mean(AVG.sens.MMR[[avg]], na.rm = TRUE)
-}
-```
-
-```{r}
-AVG.sens.tob <- vector(mode = "list", length = length(step))
-
-for (iteration in 1:100){
-  sens.tob <- performance(load.tob, measure = "sens")
-  
-  for(ind in 1:length(sens.tob@x.values)){
-    thresh = as.vector(slot(sens.tob, "x.values")[[ind]])
-    sens = as.vector(slot(sens.tob, "y.values")[[ind]])
-    if (length(thresh) > 2){
-      if (identical(which(thresh<=0.5), integer(0))){
-        AVG.sens.tob[[ind]][iteration] = NA
-      }
-      else{
-        low.ind = max(which(thresh >=0.5))
-        high.ind = min(which(thresh <=0.5))
-        #point slop formula of a line
-        slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
-        AVG.sens.tob[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
-      }
-    }
-    else{
-      AVG.sens.tob[[ind]][iteration] = NA
-    }
-  }
-}
-
-load.sens.tob.vec = c()
-for (avg in 1:length(AVG.sens.tob)){
-  load.sens.tob.vec[avg] = mean(AVG.sens.tob[[avg]], na.rm = TRUE)
-}
+load.sens.MMR.vec = evaluate_perf(100, length(step_load), load.MMR, "sens")
+load.sens.tob.vec = evaluate_perf(100, length(step_load), load.tob, "sens")
 ```
 
 ```{r}
@@ -823,69 +739,8 @@ ggplot(data = sens.df, mapping = aes(x = dilution,
 ## Specificity
 
 ```{r}
-AVG.spec.MMR <- vector(mode = "list", length = length(step))
-
-for (iteration in 1:100){
-  spec.MMR <- performance(load.MMR, measure = "spec")
-  
-  for(ind in 1:length(spec.MMR@x.values)){
-    thresh = as.vector(slot(spec.MMR, "x.values")[[ind]])
-    spec = as.vector(slot(spec.MMR, "y.values")[[ind]])
-    if (length(thresh) > 2){
-      if (identical(which(thresh<=0.5), integer(0))){
-        AVG.spec.MMR[[ind]][iteration] = NA
-      }
-      else{
-        low.ind = max(which(thresh >=0.5))
-        high.ind = min(which(thresh <=0.5))
-        #point slop formula of a line
-        slope = (spec[high.ind] - spec[low.ind]) / (thresh[high.ind] - thresh[low.ind])
-        AVG.spec.MMR[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + spec[low.ind]
-      }
-    }
-    else{
-      AVG.spec.MMR[[ind]][iteration] = NA
-    }
-  }
-}
-
-load.spec.MMR.vec = c()
-for (avg in 1:length(AVG.spec.MMR)){
-  load.spec.MMR.vec[avg] = mean(AVG.spec.MMR[[avg]], na.rm = TRUE)
-}
-```
-
-```{r}
-AVG.spec.tob <- vector(mode = "list", length = length(step))
-
-for (iteration in 1:100){
-  spec.tob <- performance(load.tob, measure = "spec")
-  
-  for(ind in 1:length(spec.tob@x.values)){
-    thresh = as.vector(slot(spec.tob, "x.values")[[ind]])
-    spec = as.vector(slot(spec.tob, "y.values")[[ind]])
-    if (length(thresh) > 2){
-      if (identical(which(thresh<=0.5), integer(0))){
-        AVG.spec.tob[[ind]][iteration] = NA
-      }
-      else{
-        low.ind = max(which(thresh >=0.5))
-        high.ind = min(which(thresh <=0.5))
-        #point slop formula of a line
-        slope = (spec[high.ind] - spec[low.ind]) / (thresh[high.ind] - thresh[low.ind])
-        AVG.spec.tob[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + spec[low.ind]
-      }
-    }
-    else{
-      AVG.spec.tob[[ind]][iteration] = NA
-    }
-  }
-}
-
-load.spec.tob.vec = c()
-for (avg in 1:length(AVG.spec.tob)){
-  load.spec.tob.vec[avg] = mean(AVG.spec.tob[[avg]], na.rm = TRUE)
-}
+load.spec.MMR.vec = evaluate_perf(100, length(step.load), load.MMR, "spec")
+load.spec.tob.vec = evaluate_perf(100, length(step.load), load.tob, "spec")
 ```
 
 ```{r}
