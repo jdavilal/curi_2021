@@ -659,7 +659,8 @@ sens = unlist(sens)
 spec = unlist(spec)
 
 #convert into data frame
-table = data.frame(percent.FFPE, signature, sens, spec, acc)
+table = data.frame(percent.FFPE, signature, round(sens, digits = 2), 
+                   round(spec, digits = 2), round(acc, digits = 2))
 
 #avg the multiple sensitivity/specificity values for each dilution and each signature
 table <- table %>%
