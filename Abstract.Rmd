@@ -4,7 +4,7 @@ author: "Audrey Mitchell"
 date: "7/21/2021"
 output: html_document
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
@@ -14,6 +14,7 @@ library(MutationalPatterns)
 library(tidyverse)
 library(ggrepel)
 library(ROCR)
+library(gridExtra)
 source("bayes_function.R")
 source("get_classification_df.R")
 source("simulation.R")
@@ -294,12 +295,12 @@ sig6.truth <- rep("MMR", 500)
 sample.ffpe <- create_signature_sample_vector(ffpe.signature, 500)
 ffpe.truth <- rep("FFPE", 500)
 MMR.ROC <- get_classification_df(list(sample.sig6, sample.ffpe), c("MMR","FFPE"),
-                              list(signature.matrix.list[[6]], ffpe.sig))
+                              list(signature.matrix.list[[6]], ffpe.signature))
 
 sample.sig4 <- create_signature_sample_vector(signature.4.mat, 500)
 sig4.truth <- rep("Tobacco", 500)
 tob.ROC <- get_classification_df(list(sample.sig4, sample.ffpe), c("Tobacco","FFPE"),
-                              list(signature.matrix.list[[4]], ffpe.sig))
+                              list(signature.matrix.list[[4]], ffpe.signature))
 ```
 
 ```{r}
@@ -315,13 +316,19 @@ MMR.pred <- prediction(MMR.ROC$MMR, MMR.ROC$truthMMR)
 MMR.perf <- performance(MMR.pred, measure = "tpr", x.measure = "fpr")
 tob.pred <- prediction(tob.ROC$Tobacco, tob.ROC$truthTob)
 tob.perf <- performance(tob.pred, measure = "tpr", x.measure = "fpr")
+
+
+png("MMRtobROC.png", res = 300, width = 131.25, height = 108, units = "mm")
+
 plot(MMR.perf, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7),
      main = "ROC curve of classifier", lty = 2) #ROC
 plot(tob.perf, print.cutoffs.at=0.5, text.adj=c(-0.2,1.7), 
      add = TRUE, lty = 3)
 abline(a=0, b= 1)
-legend("bottom", c("Signature 6 with FFPE noise", "Signature 4 with FFPE noise"),
+legend("bottomright", c("Signature 6 with FFPE noise", "Signature 4 with FFPE noise"),
        lty = 2:3)
+
+dev.off()
 ```
 
 
@@ -557,7 +564,7 @@ signature.sens = append(rep("Signature 6", length(sens.MMR.vec)),
 dilution = append(step/10, step/10)
 sens.df <- data.frame(dilution, sensitivity, signature.sens)
 
-ggplot(data = sens.df, mapping = aes(x = dilution, 
+MMR.tob.sens <- ggplot(data = sens.df, mapping = aes(x = dilution, 
                                      y = sensitivity, 
                                      color = signature.sens)) +
   geom_point() +
@@ -567,6 +574,8 @@ ggplot(data = sens.df, mapping = aes(x = dilution,
        y = "Sensitivity value",
        color = "True signal") +
   coord_cartesian(xlim = c(0,100), ylim = c(0,1))
+
+ggsave("MMRtobSens.png", plot = MMR.tob.sens, dpi = 300, width = 175, height = 108, units = "mm")
 ```
 
 ## Specificity
@@ -585,7 +594,7 @@ signature.spec = append(rep("Signature 6", length(sens.MMR.vec)),
 dilution = append(step/10, step/10)
 spec.df <- data.frame(dilution, specificity, signature.spec)
 
-ggplot(data = spec.df, mapping = aes(x = dilution, 
+MMR.tob.spec <- ggplot(data = spec.df, mapping = aes(x = dilution, 
                                      y = specificity, 
                                      color = signature.sens)) +
   geom_point() +
@@ -595,6 +604,71 @@ ggplot(data = spec.df, mapping = aes(x = dilution,
        y = "Specificity value",
        color = "True signal") +
   coord_cartesian(xlim = c(0,100), ylim = c(0,1))
+
+ggsave("MMRtobSpec.png", plot = MMR.tob.spec, dpi = 300, width = 175, height = 108, units = "mm")
+```
+
+## Reconstructed profiles of diluted MMR
+
+```{r}
+dilution.sig = signature.6.mat
+dilution.sig.name = "SBS6"
+total.mut = 2000
+dilute = c(0.1,0.3,0.5,0.7,0.9)*total.mut
+dilution.list <- vector(mode = "list", length = 5)
+i = 1
+
+for (mut in dilute){
+  #create samples with some percent of noise
+  add.sig = create_signature_sample_vector(dilution.sig, total.mut-mut)
+  sig.profile = vector_to_matrix(add.sig)
+  ffpe.sample = create_signature_sample_vector(ffpe.signature, mut)
+  ffpe.sig = vector_to_matrix(c(ffpe.sample, add.sig))
+  #classify mutations
+  dilution.df <- get_classification_df(list(add.sig, ffpe.sample), c("SBS6", "FFPE"),
+                                       list(dilution.sig, ffpe.signature))
+  #filter FFPE mutations
+  dilution.df.filtered <- dilution.df %>%
+      filter(classify != "FFPE")
+  recon.sig <- vector_to_matrix(dilution.df.filtered$mutations)
+  
+  #values for performance characteristics
+  performance.df <- dilution.df %>%
+    mutate(TP = ifelse(classify == dilution.sig.name & truth == dilution.sig.name, 1,0),
+           FP = ifelse(classify == dilution.sig.name & truth == "FFPE", 1,0),
+           TN = ifelse(classify == "FFPE" & truth == "FFPE", 1,0),
+           FN = ifelse(classify == "FFPE" & truth == dilution.sig.name, 1,0))
+  TN = performance.df$TN
+  FN = performance.df$FN
+  TP = performance.df$TP
+  FP = performance.df$FP
+  acc.vec = TP + TN
+    
+  #calculate performance characterisitics
+  sens.value = round(mean(TP)/(mean(TP) + mean(FN)), digits = 2)
+  spec.value = round(mean(TN)/(mean(TN) + mean(FP)), digits = 2)
+  acc.value = round(mean(acc.vec), digits = 2)
+  
+  sig.plot <- plot_96_profile(sig.profile)+labs(title = "Signature 6 simulated sample", 
+                                                x = "Context")
+  ffpe.sig.plot <- plot_96_profile(ffpe.sig)+labs(title = "Simulated Sample with FFPE noise",
+                                                  x = "Context")
+  recon.plot <- plot_96_profile(recon.sig)+labs(title = "Signature 6 Reconstructed", 
+                                                x = "Context", 
+                                                caption = paste0("Sensitivity: ", sens.value,
+                                                                 " | Specificity: ",
+                                                                 spec.value, " | Accuracy: ",
+                                                                 acc.value))
+  dilution.list[[i]] <- grid.arrange(sig.plot, ffpe.sig.plot, recon.plot)
+  
+  i = i+1
+}
+
+ggsave("sig6reconstruction_1.png", plot = dilution.list[[1]], dpi = 300, width = 175, height = 243, units = "mm")
+ggsave("sig6reconstruction_2.png", plot = dilution.list[[2]], dpi = 300, width = 175, height = 243, units = "mm")
+ggsave("sig6reconstruction_3.png", plot = dilution.list[[3]], dpi = 300, width = 175, height = 243, units = "mm")
+ggsave("sig6reconstruction_4.png", plot = dilution.list[[4]], dpi = 300, width = 175, height = 243, units = "mm")
+ggsave("sig6reconstruction_5.png", plot = dilution.list[[5]], dpi = 300, width = 175, height = 243, units = "mm")
 ```
 
 ## File of all signatures diluted with FFPE noise
