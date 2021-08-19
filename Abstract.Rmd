@@ -85,7 +85,7 @@ signature.6.mat <- as.matrix(cosmic.signatures[,"SBS6"])
 rownames(signature.6.mat) <- mutations
 ```
 
-#Diagram of Methods
+# Diagram of Methods
 
 ```{r}
 mmr.sample <- create_signature_sample_vector(signature.6.mat, 200)
@@ -129,7 +129,7 @@ signatures.plot
 ggsave("signatures.png", plot = signatures.plot , width = 175, height = 108, units = "mm")
 ```
 
-#Diagram of Simulating Data
+# Diagram of Simulating Data
 ```{r}
 signature4.plot <- plot_96_profile(signature.4.mat)+
   labs(title = "Signature 4", x = "Context")+
@@ -162,7 +162,7 @@ sampleprof.plot
 ggsave("sampleprofile.png", plot = sampleprof.plot , width = 175, height = 108, units = "mm")
 ```
 
-#Reconstructed Profiles of Signatures 4 and 6
+# Reconstructed Profiles of Signatures 4 and 6
 
 ```{r}
 set.seed()
@@ -315,8 +315,14 @@ tob.ROC <- tob.ROC %>%
 
 #provide predictions and labels
 MMR.pred <- prediction(MMR.ROC$MMR, MMR.ROC$truthMMR)
+mmr.auc <-  performance(MMR.pred, measure = "auc")
+mmr.auc@y.values[[1]][1] #AUC for SBS6
 MMR.perf <- performance(MMR.pred, measure = "tpr", x.measure = "fpr")
+
 tob.pred <- prediction(tob.ROC$Tobacco, tob.ROC$truthTob)
+tob.auc <-  performance(tob.pred, measure = "auc")
+tob.auc@y.values[[1]][1] #AUC for SBS4
+
 tob.perf <- performance(tob.pred, measure = "tpr", x.measure = "fpr")
 
 
@@ -333,8 +339,10 @@ dev.off()
 ```
 
 
-#Scatterplot of Average AUC vs. Cosine Similarity to FFPE
+
+# Scatterplot of Average AUC vs. Cosine Similarity to FFPE
 ```{r}
+set.seed(500)
 #outer for loop: loop through each COSMIC v3 signature
 average.auc.values <- c()
 for (x in 1:length(signature.names)){
@@ -367,33 +375,61 @@ colnames(cos.sim.auc.data) <- c("signature", "cosine_similarity", "average_auc")
 ```
 
 ```{r}
+
+ggplot(cos.sim.auc.data, aes(x=average_auc)) +
+  geom_histogram(color="black", fill="lightblue")+
+  labs( x = "Average AUC", y = "Count")
+ggsave("supp.fig.5.png", dpi = 300, width = 175, height = 108, units = "mm")
+
+median(cos.sim.auc.data$average_auc)
+IQR(cos.sim.auc.data$average_auc)
+
+
+
+
 model2 <- lm(average_auc ~ cosine_similarity, data = cos.sim.auc.data)
 
-#summary(model2)
+summary(model2)
 
-model2_summary <- summary(model2)
 
 cos.sim.auc.data$residuals <- model2_summary$residuals
 
 cos.sim.auc.outliers <- cos.sim.auc.data %>%
-  filter(residuals >= quantile(cos.sim.auc.data$residuals, 0.90) | 
-         residuals <= quantile(cos.sim.auc.data$residuals, 0.10) |
-           signature %in% c("SBS4"))
+  filter(average_auc<0.8) 
+
+cos.sim.auc.outliers
+
+cos.sim.auc.outliers2 <- cos.sim.auc.data %>%
+  filter(average_auc>=0.8 & average_auc<0.9)
+
+cos.sim.sbs4 <- cos.sim.auc.data %>%
+  filter(signature=="SBS4")
+
+
 ```
 
 ```{r}
 ggplot(cos.sim.auc.data, aes(x = cosine_similarity, y = average_auc))+
   geom_point()+
-  geom_smooth(method = "lm")+
-  labs(title = "Average area under curve vs. cosine similarity to FFPE", x = "Cosine similarity of COSMIC signature to FFPE signature", y = "Average area under curve (10 iterations)")+
+  geom_smooth(method = "lm", se=FALSE)+
+  labs( x = "Cosine similarity between baseline COSMIC and FFPE signatures", y = "Average AUC")+
   geom_point(data = cos.sim.auc.outliers, color = "red")+
-  geom_label_repel(data = cos.sim.auc.outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)
+  geom_point(data = cos.sim.auc.outliers2, color = "purple")+
+  geom_hline(yintercept=0.8, linetype="dashed", color = "red")+
+  geom_hline(yintercept=0.9, linetype="dashed", color = "purple")+
+  geom_label_repel(data = cos.sim.auc.outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
+  geom_label_repel(data = cos.sim.auc.outliers2, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
+  geom_label_repel(data = cos.sim.sbs4, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
+  
+
+ggsave("Fig2b.png", dpi = 300, width = 175, height = 108, units = "mm")
   
 ```
 
-#Scatterplot of Average Sensitivity and Specificity vs. Cosine Similarity to FFPE
+# Scatterplot of Average Sensitivity and Specificity vs. Cosine Similarity to FFPE
 
 ```{r}
+set.seed(500)
 #outer for loop: loop through each COSMIC v3 signature
 average.sensitivity.values <- c()
 average.specificity.values <- c()
@@ -436,8 +472,69 @@ sens.spec.data <- data.frame(signature.names, ffpe.cosmic.cos.sims, average.sens
 
 colnames(sens.spec.data) <- c("signature", "cosine_similarity", "sensitivity", "specificity")
 
-sens.spec.data.2 <- sens.spec.data %>%
-  pivot_longer(c(sensitivity, specificity), names_to = "measure", values_to = "value")
+
+ggplot(sens.spec.data, aes(x=sensitivity)) +
+  geom_histogram(color="black", fill="lightblue")+
+  labs( x = "Average sensitivity", y = "Count")
+ggsave("supp.fig.3.png", dpi = 300, width = 175, height = 108, units = "mm")
+
+median(sens.spec.data$sensitivity)
+IQR(sens.spec.data$sensitivity)
+
+
+outliers <- sens.spec.data %>%
+  filter(sensitivity<0.8 | signature=="SBS4" | signature=="SBS6")
+
+ref.signatures <- sens.spec.data %>%
+  filter(signature=="SBS4" )
+
+
+ggplot(sens.spec.data, aes(x = cosine_similarity, y = sensitivity))+
+  geom_point()+
+  geom_smooth(method = "lm", se=FALSE)+
+  labs( x = "Cosine similarity between baseline COSMIC and FFPE signatures", y = "Average sensitivity")+
+  geom_point(data = outliers, color = "red")+
+  geom_hline(yintercept=0.8, linetype="dashed", color = "red")+
+  geom_label_repel(data = outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
+
+
+ggsave("supp.fig6.png", dpi = 300, width = 175, height = 108, units = "mm")
+
+
+model.sens <- lm(sensitivity ~ cosine_similarity, data = sens.spec.data)
+
+summary(model.sens)
+
+
+ggplot(sens.spec.data, aes(x=specificity)) +
+  geom_histogram(color="black", fill="lightblue")+
+  labs( x = "Average specificity", y = "Count")
+ggsave("supp.fig.4.png", dpi = 300, width = 175, height = 108, units = "mm")
+
+median(sens.spec.data$specificity)
+IQR(sens.spec.data$specificity)
+
+outliers <- sens.spec.data %>%
+  filter(specificity<0.8 | signature=="SBS4" | signature=="SBS6")
+
+
+ggplot(sens.spec.data, aes(x = cosine_similarity, y = specificity))+
+  geom_point()+
+  geom_smooth(method = "lm", se=FALSE)+
+  labs( x = "Cosine similarity between baseline COSMIC and FFPE signatures", y = "Average specificity")+
+  geom_point(data = outliers, color = "red")+
+  geom_hline(yintercept=0.8, linetype="dashed", color = "red")+
+  geom_label_repel(data = outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
+
+
+ggsave("supp.fig7.png", dpi = 300, width = 175, height = 108, units = "mm")
+
+
+model.spec <- lm(specificity ~ cosine_similarity, data = sens.spec.data)
+
+summary(model.spec)
+
+
 ```
 
 ```{r}
@@ -560,8 +657,8 @@ sens.tob.vec = evaluate_perf(100, length(step), test.tob, "sens")
 
 ```{r}
 sensitivity = append(sens.MMR.vec, sens.tob.vec)
-signature.sens = append(rep("Signature 6", length(sens.MMR.vec)),
-                        rep("Signature 4", length(sens.tob.vec)))
+signature.sens = append(rep("SBS6", length(sens.MMR.vec)),
+                        rep("SBS4", length(sens.tob.vec)))
 dilution = append(step/10, step/10)
 sens.df <- data.frame(dilution, sensitivity, signature.sens)
 
@@ -569,14 +666,19 @@ MMR.tob.sens <- ggplot(data = sens.df, mapping = aes(x = dilution,
                                      y = sensitivity, 
                                      color = signature.sens)) +
   geom_point() +
-  geom_smooth() +
-  labs(title = "Sensitivity as a function of FFPE noise",
-       x = "Percent of FFPE noise in samples",
-       y = "Sensitivity value",
-       color = "True signal") +
-  coord_cartesian(xlim = c(0,100), ylim = c(0,1))
+  geom_smooth(se=FALSE) +
+  labs(x = "Percent of FFPE signature",
+       y = "Sensitivity",
+       color = "Baseline signature") +
+  coord_cartesian(xlim = c(0,100), ylim = c(0,1))+
+  scale_y_continuous(breaks=seq(from=0, to=1, by=.2))+
+  geom_hline(yintercept=0.8, linetype="dashed", color = "red")
 
-ggsave("MMRtobSens.png", plot = MMR.tob.sens, dpi = 300, width = 175, height = 108, units = "mm")
+
+ggsave("fig3a.png", plot = MMR.tob.sens, dpi = 300, width = 175, height = 108, units = "mm")
+
+MMR.tob.sens
+
 ```
 
 ## Specificity
@@ -590,8 +692,8 @@ spec.tob.vec = evaluate_perf(100, length(step), test.tob, "spec")
 
 ```{r}
 specificity = append(spec.MMR.vec, spec.tob.vec)
-signature.spec = append(rep("Signature 6", length(sens.MMR.vec)),
-                        rep("Signature 4", length(spec.tob.vec)))
+signature.spec = append(rep("SBS6", length(sens.MMR.vec)),
+                        rep("SBS4", length(spec.tob.vec)))
 dilution = append(step/10, step/10)
 spec.df <- data.frame(dilution, specificity, signature.spec)
 
@@ -600,13 +702,16 @@ MMR.tob.spec <- ggplot(data = spec.df, mapping = aes(x = dilution,
                                      color = signature.sens)) +
   geom_point() +
   geom_smooth() +
-  labs(title = "Specificity as a function of FFPE noise",
-       x = "Percent of FFPE noise in samples",
-       y = "Specificity value",
-       color = "True signal") +
-  coord_cartesian(xlim = c(0,100), ylim = c(0,1))
+  labs(x = "Percent of FFPE signature",
+       y = "Specificity",
+       color = "Baseline signature") +
+  coord_cartesian(xlim = c(0,100), ylim = c(0,1))+
+    scale_y_continuous(breaks=seq(from=0, to=1, by=.2))+
+  geom_hline(yintercept=0.8, linetype="dashed", color = "red")
 
-ggsave("MMRtobSpec.png", plot = MMR.tob.spec, dpi = 300, width = 175, height = 108, units = "mm")
+ggsave("fig3b.png", plot = MMR.tob.spec, dpi = 300, width = 175, height = 108, units = "mm")
+
+MMR.tob.spec
 ```
 
 ## Reconstructed profiles of diluted MMR
