@@ -389,7 +389,7 @@ IQR(cos.sim.auc.data$average_auc)
 
 model2 <- lm(average_auc ~ cosine_similarity, data = cos.sim.auc.data)
 
-summary(model2)
+model2_summary <- summary(model2)
 
 
 cos.sim.auc.data$residuals <- model2_summary$residuals
@@ -537,12 +537,6 @@ summary(model.spec)
 
 ```
 
-```{r}
-ggplot(data = sens.spec.data.2, aes(x = cosine_similarity, y = value, color = measure))+
-  geom_point()+
-  geom_smooth(method = lm, se = FALSE)+
-  labs(title = "Sensitivity & Specificity vs. Cosine Similarity to FFPE Signature", x = "Cosine Similarity of COSMIC Signature to FFPE", y = "Average Sensitivity and Specificity (10 iterations)")
-```
 
 
 # Dilution performance characteristics 
