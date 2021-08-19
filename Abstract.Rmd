@@ -165,7 +165,7 @@ ggsave("sampleprofile.png", plot = sampleprof.plot , width = 175, height = 108, 
 # Reconstructed Profiles of Signatures 4 and 6
 
 ```{r}
-set.seed()
+set.seed(500)
 #Create Signature 4 Sample
 sig4.500 <- create_signature_sample_vector(signature.4.mat, 500)
 sig4.profile <- vector_to_matrix(sig4.500)
