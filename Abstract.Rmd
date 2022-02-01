@@ -2,8 +2,10 @@
 title: "Abstract Plots"
 author: "Audrey Mitchell"
 date: "7/21/2021"
-output: html_document
-editor_options: 
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
   chunk_output_type: console
 ---
 
@@ -21,7 +23,7 @@ source("simulation.R")
 sessionInfo()
 ```
 
-```{r}
+```{r, include = FALSE}
 vector_to_matrix <- function(mutations.vector){
   tab <- table(mutations.vector)/sum(table(mutations.vector))
   #transform table to a data frame and assign column names to mutations and frequencies
@@ -48,7 +50,7 @@ vector_to_matrix <- function(mutations.vector){
 ```
 
 
-```{r}
+```{r, include=FALSE}
 #load FFPE signature as a matrix
 ffpe.signature <- as.matrix(load_old_mutational_matrix("supplied_results/ffpe.signature.txt"))
 
@@ -87,7 +89,7 @@ rownames(signature.6.mat) <- mutations
 
 # Diagram of Methods
 
-```{r}
+```{r, include=FALSE}
 mmr.sample <- create_signature_sample_vector(signature.6.mat, 200)
 tobacco.sample <- create_signature_sample_vector(signature.4.mat, 200)
 ffpe.sample <- create_signature_sample_vector(ffpe.signature, 100)
@@ -102,10 +104,10 @@ mut.profile <- plot_96_profile(ex.ffpe.profile.mat)+
 
 mut.profile
 
-ggsave("mutprofile.png", plot = mut.profile , width = 175, height = 108, units = "mm")
+#ggsave("mutprofile.png", plot = mut.profile , width = 175, height = 108, units = "mm")
 ```
 
-```{r}
+```{r, include=FALSE}
 sig.mat <- cbind(signature.4.mat, signature.6.mat, ffpe.signature)
 colnames(sig.mat) <- c("Signature 4", "Signature 6", "FFPE")
 fts.res <- fit_to_signatures(ex.ffpe.profile.mat, sig.mat)
@@ -116,37 +118,37 @@ contribution.plot <- plot_contribution(fts.res$contribution, sig.mat, coord_flip
 
 contribution.plot
 
-ggsave("contributions.png", plot = contribution.plot , width = 175, height = 54, units = "mm")
+#ggsave("contributions.png", plot = contribution.plot , width = 175, height = 54, units = "mm")
 ```
 
-```{r}
+```{r, include=FALSE}
 signatures.plot <- plot_96_profile(sig.mat)+
   labs(title = "Mutational Signatures", x = "Context")+
   theme(plot.title = element_text(hjust = 0.5))
 
 signatures.plot
 
-ggsave("signatures.png", plot = signatures.plot , width = 175, height = 108, units = "mm")
+#ggsave("signatures.png", plot = signatures.plot , width = 175, height = 108, units = "mm")
 ```
 
 # Diagram of Simulating Data
-```{r}
+```{r, include=FALSE}
 signature4.plot <- plot_96_profile(signature.4.mat)+
   labs(title = "Signature 4", x = "Context")+
   theme(plot.title = element_text(hjust = 0.5))
 
-ggsave("signature4.png", plot = signature4.plot , width = 175, height = 81, units = "mm")
+#ggsave("signature4.png", plot = signature4.plot , width = 175, height = 81, units = "mm")
 ```
 
-```{r}
+```{r, include=FALSE}
 ffpe.plot <- plot_96_profile(ffpe.signature)+
   labs(title = "FFPE Signature", x = "Context")+
   theme(plot.title = element_text(hjust = 0.5))
 
-ggsave("ffpe.png", plot = ffpe.plot , width = 175, height = 81, units = "mm")
+#ggsave("ffpe.png", plot = ffpe.plot , width = 175, height = 81, units = "mm")
 ```
 
-```{r}
+```{r, include=FALSE}
 sample.4 <- create_signature_sample_vector(signature.4.mat, 500)
 sample.ffpe <- create_signature_sample_vector(ffpe.signature, 500)
 
@@ -159,12 +161,12 @@ sampleprof.plot <- plot_96_profile(ex.sim.sample)+
 
 sampleprof.plot
 
-ggsave("sampleprofile.png", plot = sampleprof.plot , width = 175, height = 108, units = "mm")
+#ggsave("sampleprofile.png", plot = sampleprof.plot , width = 175, height = 108, units = "mm")
 ```
 
 # Reconstructed Profiles of Signatures 4 and 6
 
-```{r}
+```{r, include=FALSE}
 set.seed(500)
 #Create Signature 4 Sample
 sig4.500 <- create_signature_sample_vector(signature.4.mat, 500)
@@ -177,7 +179,7 @@ sig4.profile.plot <- plot_96_profile(sig4.profile)+
 sig4.profile.plot
 ```
 
-```{r}
+```{r, include=FALSE}
 #Add FFPE Noise
 addffpe.500 <- create_signature_sample_vector(ffpe.signature, 500)
 
@@ -188,7 +190,7 @@ sig4.ffpe.plot <- plot_96_profile(sig4.ffpe)+
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
-```{r}
+```{r, include=FALSE}
 #Classify and Filter
 sig4.ffpe.class <- get_classification_df(list(sig4.500, addffpe.500), c("SBS4", "FFPE"), list(signature.4.mat, ffpe.signature))
 
@@ -204,7 +206,7 @@ sig4.recon.plot <- plot_96_profile(sig4.recon.matrix)+
 sig4.recon.plot
 ```
 
-```{r}
+```{r, include=FALSE}
 #Calculate Sensitivity, Specificity, and Misclassification rate
 
 sig4.sensitivity <- sig4.ffpe.class %>%
@@ -220,14 +222,14 @@ nrow(sig4.specificity)/500
 mean(sig4.ffpe.class$misclassification)
 ```
 
-```{r}
+```{r, include=FALSE}
 #Arrange 3 plots
 sig4.reconstruction <- grid.arrange(sig4.profile.plot, sig4.ffpe.plot, sig4.recon.plot)
 
-ggsave("sig4reconstruction.png", plot = sig4.reconstruction , width = 175, height = 243, units = "mm")
+#ggsave("sig4reconstruction.png", plot = sig4.reconstruction , width = 175, height = 243, units = "mm")
 ```
 
-```{r}
+```{r, include=FALSE}
 #Create Signature 6 Sample
 sig6.500 <- create_signature_sample_vector(signature.6.mat, 500)
 sig6.profile <- vector_to_matrix(sig6.500)
@@ -239,7 +241,7 @@ sig6.profile.plot <- plot_96_profile(sig6.profile)+
 sig6.profile.plot
 ```
 
-```{r}
+```{r, include=FALSE}
 #Add FFPE Noise
 sig6.ffpe <- vector_to_matrix(c(sig6.500, addffpe.500))
 
@@ -250,7 +252,7 @@ sig6.ffpe.plot <- plot_96_profile(sig6.ffpe)+
 sig6.ffpe.plot
 ```
 
-```{r}
+```{r, include=FALSE}
 #Classify and Filter
 sig6.ffpe.class <- get_classification_df(list(sig6.500, addffpe.500), c("SBS6", "FFPE"), list(signature.6.mat, ffpe.signature))
 
@@ -266,7 +268,7 @@ sig6.recon.plot <- plot_96_profile(sig6.recon.matrix)+
 sig6.recon.plot
 ```
 
-```{r}
+```{r, include=FALSE}
 #Calculate Sensitivity, specificity, and misclassification rate
 
 sig6.sensitivity <- sig6.ffpe.class %>%
@@ -282,16 +284,16 @@ nrow(sig6.specificity)/500
 mean(sig6.ffpe.class$misclassification)
 ```
 
-```{r}
+```{r, include=FALSE}
 #Arrange 3 plots
 sig6.reconstruction <- grid.arrange(sig6.profile.plot, sig6.ffpe.plot, sig6.recon.plot)
 
-ggsave("sig6reconstruction.png", plot = sig6.reconstruction , width = 175, height = 243, units = "mm")
+#ggsave("sig6reconstruction.png", plot = sig6.reconstruction , width = 175, height = 243, units = "mm")
 ```
 
 # ROC curve
 
-```{r}
+```{r, include=FALSE}
 sample.sig6 <- create_signature_sample_vector(signature.6.mat, 500)
 sig6.truth <- rep("MMR", 500)
 sample.ffpe <- create_signature_sample_vector(ffpe.signature, 500)
@@ -305,7 +307,7 @@ tob.ROC <- get_classification_df(list(sample.sig4, sample.ffpe), c("Tobacco","FF
                               list(signature.matrix.list[[4]], ffpe.signature))
 ```
 
-```{r}
+```{r, include=FALSE}
 MMR.ROC <- MMR.ROC %>%
   #create binary labels
   mutate(truthMMR = ifelse(truth == "MMR",1,0))
@@ -341,7 +343,7 @@ dev.off()
 
 
 # Scatterplot of Average AUC vs. Cosine Similarity to FFPE
-```{r}
+```{r, include=FALSE}
 set.seed(500)
 #outer for loop: loop through each COSMIC v3 signature
 average.auc.values <- c()
@@ -369,17 +371,17 @@ for (x in 1:length(signature.names)){
 }
 ```
 
-```{r}
+```{r, include=FALSE}
 cos.sim.auc.data <- data.frame(signature.names, ffpe.cosmic.cos.sims, average.auc.values)
 colnames(cos.sim.auc.data) <- c("signature", "cosine_similarity", "average_auc")
 ```
 
-```{r}
+```{r, include=FALSE}
 
 ggplot(cos.sim.auc.data, aes(x=average_auc)) +
   geom_histogram(color="black", fill="lightblue")+
   labs( x = "Average AUC", y = "Count")
-ggsave("supp.fig.5.png", dpi = 300, width = 175, height = 108, units = "mm")
+#ggsave("supp.fig.5.png", dpi = 300, width = 175, height = 108, units = "mm")
 
 median(cos.sim.auc.data$average_auc)
 IQR(cos.sim.auc.data$average_auc)
@@ -408,7 +410,7 @@ cos.sim.sbs4 <- cos.sim.auc.data %>%
 
 ```
 
-```{r}
+```{r, include=FALSE}
 ggplot(cos.sim.auc.data, aes(x = cosine_similarity, y = average_auc))+
   geom_point()+
   geom_smooth(method = "lm", se=FALSE)+
@@ -419,16 +421,16 @@ ggplot(cos.sim.auc.data, aes(x = cosine_similarity, y = average_auc))+
   geom_hline(yintercept=0.9, linetype="dashed", color = "purple")+
   geom_label_repel(data = cos.sim.auc.outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
   geom_label_repel(data = cos.sim.auc.outliers2, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
-  geom_label_repel(data = cos.sim.sbs4, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
+  geom_label_repel(data = cos.sim.sbs4, aes(label = signature), max.overlaps = 10, label.size =   0.1)
   
 
-ggsave("Fig2b.png", dpi = 300, width = 175, height = 108, units = "mm")
+#ggsave("Fig2b.png", dpi = 300, width = 175, height = 108, units = "mm")
   
 ```
 
 # Scatterplot of Average Sensitivity and Specificity vs. Cosine Similarity to FFPE
 
-```{r}
+```{r, include=FALSE}
 set.seed(500)
 #outer for loop: loop through each COSMIC v3 signature
 average.sensitivity.values <- c()
@@ -467,7 +469,7 @@ for (x in 1:length(signature.names)){
 }
 ```
 
-```{r}
+```{r, include=FALSE}
 sens.spec.data <- data.frame(signature.names, ffpe.cosmic.cos.sims, average.sensitivity.values, average.specificity.values)
 
 colnames(sens.spec.data) <- c("signature", "cosine_similarity", "sensitivity", "specificity")
@@ -476,7 +478,7 @@ colnames(sens.spec.data) <- c("signature", "cosine_similarity", "sensitivity", "
 ggplot(sens.spec.data, aes(x=sensitivity)) +
   geom_histogram(color="black", fill="lightblue")+
   labs( x = "Average sensitivity", y = "Count")
-ggsave("supp.fig.3.png", dpi = 300, width = 175, height = 108, units = "mm")
+#ggsave("supp.fig.3.png", dpi = 300, width = 175, height = 108, units = "mm")
 
 median(sens.spec.data$sensitivity)
 IQR(sens.spec.data$sensitivity)
@@ -495,10 +497,10 @@ ggplot(sens.spec.data, aes(x = cosine_similarity, y = sensitivity))+
   labs( x = "Cosine similarity between baseline COSMIC and FFPE signatures", y = "Average sensitivity")+
   geom_point(data = outliers, color = "red")+
   geom_hline(yintercept=0.8, linetype="dashed", color = "red")+
-  geom_label_repel(data = outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
+  geom_label_repel(data = outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)
 
 
-ggsave("supp.fig6.png", dpi = 300, width = 175, height = 108, units = "mm")
+#ggsave("supp.fig6.png", dpi = 300, width = 175, height = 108, units = "mm")
 
 
 model.sens <- lm(sensitivity ~ cosine_similarity, data = sens.spec.data)
@@ -509,7 +511,7 @@ summary(model.sens)
 ggplot(sens.spec.data, aes(x=specificity)) +
   geom_histogram(color="black", fill="lightblue")+
   labs( x = "Average specificity", y = "Count")
-ggsave("supp.fig.4.png", dpi = 300, width = 175, height = 108, units = "mm")
+#ggsave("supp.fig.4.png", dpi = 300, width = 175, height = 108, units = "mm")
 
 median(sens.spec.data$specificity)
 IQR(sens.spec.data$specificity)
@@ -524,10 +526,10 @@ ggplot(sens.spec.data, aes(x = cosine_similarity, y = specificity))+
   labs( x = "Cosine similarity between baseline COSMIC and FFPE signatures", y = "Average specificity")+
   geom_point(data = outliers, color = "red")+
   geom_hline(yintercept=0.8, linetype="dashed", color = "red")+
-  geom_label_repel(data = outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)+
+  geom_label_repel(data = outliers, aes(label = signature), max.overlaps = 10, label.size =   0.1)
 
 
-ggsave("supp.fig7.png", dpi = 300, width = 175, height = 108, units = "mm")
+#ggsave("supp.fig7.png", dpi = 300, width = 175, height = 108, units = "mm")
 
 
 model.spec <- lm(specificity ~ cosine_similarity, data = sens.spec.data)
@@ -552,7 +554,7 @@ ffpe.sig = ffpe.signature
 
 ```{r}
 num.mut = 1000
-step = seq(50, 950, by = 50)
+step = seq(10, 990, by = 10)
 ```
 
 
@@ -605,27 +607,27 @@ evaluate_perf <- function(num_iter, length, pred_obj, perf_method){
   AVG.sens <- vector(mode = "list", length = length)
   
   for (iteration in 1:num_iter){
-  sens.obj <- performance(pred_obj, measure = perf_method)
+    sens.obj <- performance(pred_obj, measure = perf_method)
   
-  for(ind in 1:length(sens.obj@x.values)){
-    thresh = as.vector(slot(sens.obj, "x.values")[[ind]])
-    sens = as.vector(slot(sens.obj, "y.values")[[ind]])
-    if (length(thresh) > 2){
-      if (identical(which(thresh<=0.5), integer(0))){
-        AVG.sens[[ind]][iteration] = NA
-      }
-      else{
-        low.ind = max(which(thresh >=0.5))
-        high.ind = min(which(thresh <=0.5))
-        #point slop formula of a line
-        slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
-        AVG.sens[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
-      }
-    }
-    else{
-      AVG.sens[[ind]][iteration] = NA
+    for(ind in 1:length(sens.obj@x.values)){
+      thresh = as.vector(slot(sens.obj, "x.values")[[ind]])
+      sens = as.vector(slot(sens.obj, "y.values")[[ind]])
+      if (length(thresh) > 2){
+        if (identical(which(thresh<=0.5), integer(0))){
+          AVG.sens[[ind]][iteration] = NA
+        }
+        else{
+          low.ind = max(which(thresh >=0.5))
+          high.ind = min(which(thresh <=0.5))
+          #point slop formula of a line
+          slope = (sens[high.ind] - sens[low.ind]) / (thresh[high.ind] - thresh[low.ind])
+          AVG.sens[[ind]][iteration] = slope*(0.5 - thresh[low.ind]) + sens[low.ind]
         }
       }
+      else{
+        AVG.sens[[ind]][iteration] = NA
+          }
+        }
     }
 
   sens.vec = c()
@@ -641,9 +643,6 @@ evaluate_perf <- function(num_iter, length, pred_obj, perf_method){
 
 ```{r}
 sens.MMR.vec = evaluate_perf(100, length(step), test.MMR, "sens")
-```
-
-```{r}
 sens.tob.vec = evaluate_perf(100, length(step), test.tob, "sens")
 ```
 
@@ -658,22 +657,102 @@ sens.df <- data.frame(dilution, sensitivity, signature.sens)
 
 MMR.tob.sens <- ggplot(data = sens.df, mapping = aes(x = dilution, 
                                      y = sensitivity, 
-                                     color = signature.sens)) +
-  geom_point() +
+                                     linetype = signature.sens)) +
+  geom_point(aes(shape = signature.sens)) +
   geom_smooth(se=FALSE) +
   labs(x = "Percent of FFPE signature",
        y = "Sensitivity",
-       color = "Baseline signature") +
+       linetype = "Baseline signature",
+       shape = "Baseline signature") +
   coord_cartesian(xlim = c(0,100), ylim = c(0,1))+
   scale_y_continuous(breaks=seq(from=0, to=1, by=.2))+
-  geom_hline(yintercept=0.8, linetype="dashed", color = "red")
+  geom_hline(yintercept=0.8, linetype=4, color = "red")
 
 
-ggsave("fig3a.png", plot = MMR.tob.sens, dpi = 300, width = 175, height = 108, units = "mm")
+#ggsave("fig3a.png", plot = MMR.tob.sens, dpi = 300, width = 175, height = 108, units = "mm")
 
 MMR.tob.sens
 
 ```
+
+### Sensitivity threshold for all signatures
+
+```{r}
+#set threshold for a decent sensitivity for our classifier
+optimal.sens = 0.8
+max.sens.noise = c()
+#loop through each signature
+for (sig in 1:length(signature.matrix.list)){
+  #empty lists to hold classifier outputs and ground truths
+  probabilities.sig <- vector(mode = "list", length = length(step))
+  truth.sig <- vector(mode = "list", length = length(step))
+  
+  #dilute each signature with some percent of FFPE
+  for (x in 1:length(step)){
+    sample.ffpe <- create_signature_sample_vector(ffpe.sig, step[x])
+    ffpe.truth <- rep("FFPE", step[x])
+    sample.sig <- create_signature_sample_vector(signature.matrix.list[[sig]],
+                                                 num.mut-step[x])
+    sig.truth <- rep("Biological", num.mut-step[x])
+    #run classifier
+    test <- get_classification_df(list(sample.sig, sample.ffpe), c("Biological","FFPE"),
+                                  list(signature.matrix.list[[sig]], ffpe.sig))
+    classification <- test %>%
+      mutate(trueBinary = ifelse(truth == "Biological",1,0))
+    #extract classifications and ground truth
+    probabilities.sig[[x]] <- classification$Biological
+    truth.sig[[x]] <- classification$trueBinary
+  }
+  
+  #create ROC prediction object and evaluate
+  test.sig <- prediction(probabilities.sig, truth.sig)
+  sens.sig.vec = evaluate_perf(100, length(step), test.sig, "sens")
+  
+  #cut off noise past our threshold
+  if(identical(which(sens.sig.vec <= optimal.sens), integer(0))){
+    max.sens.noise[sig] = 100
+    }
+  else{
+    max.sens.noise[sig] = min(which(sens.sig.vec <= optimal.sens))
+    }
+}
+```
+
+
+```{r}
+#visualize results
+
+all.sens.df <- data.frame(signature.names, max.sens.noise, ffpe.cosmic.cos.sims)
+cos.sim.sbs4.sbs6 <- all.sens.df %>%
+  filter(signature.names %in% c("SBS4", "SBS6"))
+cos.sim.sens.outliers <- all.sens.df %>%
+  filter(max.sens.noise <= 50)
+
+all.sens <- ggplot(data = all.sens.df, mapping = aes(x = ffpe.cosmic.cos.sims,
+                                         y = max.sens.noise))+
+  geom_point()+
+  geom_smooth(method = "lm", se = FALSE)+
+  labs(x = "Cosine Similarity to FFPE",
+       y = "Maximum Percent of FFPE Noise") +
+  coord_cartesian(ylim = c(0,100), xlim = c(0,1)) +
+  geom_hline(yintercept=50, linetype="dashed", color = "red")+
+  geom_label_repel(data = cos.sim.sbs4.sbs6, aes(label = signature.names), 
+                   max.overlaps = 10,
+                   label.size =   0.1)+
+  geom_label_repel(data = cos.sim.sens.outliers, aes(label = signature.names), 
+                   max.overlaps = 10,
+                   label.size =   0.1)
+
+#ggsave("fig3c_sens.png", plot = all.sens, dpi = 300, width = 175, height = 108, units = "mm")
+all.sens
+```
+
+```{r}
+#linear relationship between cosine similarity and max FFPE noise
+model.all.sens <- lm(max.sens.noise ~ ffpe.cosmic.cos.sims, data = all.sens.df)
+summary(model.all.sens)
+```
+
 
 ## Specificity
 
@@ -686,31 +765,109 @@ spec.tob.vec = evaluate_perf(100, length(step), test.tob, "spec")
 
 ```{r}
 specificity = append(spec.MMR.vec, spec.tob.vec)
-signature.spec = append(rep("SBS6", length(sens.MMR.vec)),
+signature.spec = append(rep("SBS6", length(spec.MMR.vec)),
                         rep("SBS4", length(spec.tob.vec)))
 dilution = append(step/10, step/10)
 spec.df <- data.frame(dilution, specificity, signature.spec)
 
 MMR.tob.spec <- ggplot(data = spec.df, mapping = aes(x = dilution, 
                                      y = specificity, 
-                                     color = signature.sens)) +
-  geom_point() +
+                                     lty = signature.spec)) +
+  geom_point(aes(shape = signature.spec)) +
   geom_smooth() +
   labs(x = "Percent of FFPE signature",
        y = "Specificity",
-       color = "Baseline signature") +
+       lty = "Baseline signature",
+       shape = "Baseline signature") +
   coord_cartesian(xlim = c(0,100), ylim = c(0,1))+
     scale_y_continuous(breaks=seq(from=0, to=1, by=.2))+
-  geom_hline(yintercept=0.8, linetype="dashed", color = "red")
+  geom_hline(yintercept=0.8, linetype=4, color = "red")
 
-ggsave("fig3b.png", plot = MMR.tob.spec, dpi = 300, width = 175, height = 108, units = "mm")
+#ggsave("fig3b.png", plot = MMR.tob.spec, dpi = 300, width = 175, height = 108, units = "mm")
 
 MMR.tob.spec
 ```
 
-## Reconstructed profiles of diluted MMR
+### Specificity threshold for all signatures
 
 ```{r}
+#set threshold for a decent specificity for our classifier
+optimal.spec = 0.8
+min.spec.noise = c()
+#loop through each signature
+for (sig in 1:length(signature.matrix.list)){
+  #empty lists to hold classifier outputs and ground truths
+  probabilities.sig <- vector(mode = "list", length = length(step))
+  truth.sig <- vector(mode = "list", length = length(step))
+  
+  #dilute each signature with some percent of FFPE
+  for (x in 1:length(step)){
+    sample.ffpe <- create_signature_sample_vector(ffpe.sig, step[x])
+    ffpe.truth <- rep("FFPE", step[x])
+    sample.sig <- create_signature_sample_vector(signature.matrix.list[[sig]],
+                                                 num.mut-step[x])
+    sig.truth <- rep("Biological", num.mut-step[x])
+    #run classifier
+    test <- get_classification_df(list(sample.sig, sample.ffpe), c("Biological","FFPE"),
+                                  list(signature.matrix.list[[sig]], ffpe.sig))
+    classification <- test %>%
+      mutate(trueBinary = ifelse(truth == "Biological",1,0))
+    #extract classifications and ground truth
+    probabilities.sig[[x]] <- classification$Biological
+    truth.sig[[x]] <- classification$trueBinary
+  }
+  
+  #create ROC prediction object and evaluate
+  test.sig <- prediction(probabilities.sig, truth.sig)
+  spec.sig.vec = evaluate_perf(100, length(step), test.sig, "spec")
+  
+  #cut off noise past our threshold
+  if(identical(which(spec.sig.vec <= optimal.spec), integer(0))){
+    min.spec.noise[sig] = 1
+    }
+  else{
+    min.spec.noise[sig] = max(which(spec.sig.vec <= optimal.spec))
+    }
+}
+```
+
+
+```{r}
+#visualize results
+
+all.spec.df <- data.frame(signature.names, min.spec.noise, ffpe.cosmic.cos.sims)
+cos.sim.sbs4.sbs6 <- all.spec.df %>%
+  filter(signature.names == "SBS4")
+cos.sim.spec.outliers <- all.spec.df %>%
+  filter(min.spec.noise >= 50)
+
+all.spec <- ggplot(data = all.spec.df, mapping = aes(x = ffpe.cosmic.cos.sims,
+                                         y = min.spec.noise))+
+  geom_point()+
+  geom_smooth(method = "lm", se = FALSE)+
+  labs(x = "Cosine Similarity to FFPE",
+       y = "Minimum Percent of FFPE Noise") +
+  coord_cartesian(ylim = c(0,100), xlim = c(0,1)) +
+  geom_hline(yintercept=50, linetype="dashed", color = "red")+
+  geom_label_repel(data = cos.sim.sbs4.sbs6, aes(label = signature.names), 
+                   max.overlaps = 10,
+                   label.size =   0.1)+
+  geom_label_repel(data = cos.sim.spec.outliers, aes(label = signature.names), 
+                   max.overlaps = 10,
+                   label.size =   0.1)
+
+#ggsave("fig3d_spec.png", plot = all.spec, dpi = 300, width = 175, height = 108, units = "mm")
+all.spec
+```
+
+```{r}
+model.all.spec <- lm(min.spec.noise ~ ffpe.cosmic.cos.sims, data = all.spec.df)
+summary(model.all.spec)
+```
+
+## Reconstructed profiles of diluted MMR
+
+```{r, include=FALSE}
 dilution.sig = signature.6.mat
 dilution.sig.name = "SBS6"
 total.mut = 2000
@@ -764,16 +921,16 @@ for (mut in dilute){
   i = i+1
 }
 
-ggsave("sig6reconstruction_1.png", plot = dilution.list[[1]], dpi = 300, width = 175, height = 243, units = "mm")
-ggsave("sig6reconstruction_2.png", plot = dilution.list[[2]], dpi = 300, width = 175, height = 243, units = "mm")
-ggsave("sig6reconstruction_3.png", plot = dilution.list[[3]], dpi = 300, width = 175, height = 243, units = "mm")
-ggsave("sig6reconstruction_4.png", plot = dilution.list[[4]], dpi = 300, width = 175, height = 243, units = "mm")
-ggsave("sig6reconstruction_5.png", plot = dilution.list[[5]], dpi = 300, width = 175, height = 243, units = "mm")
+#ggsave("sig6reconstruction_1.png", plot = dilution.list[[1]], dpi = 300, width = 175, height = 243, units = "mm")
+#ggsave("sig6reconstruction_2.png", plot = dilution.list[[2]], dpi = 300, width = 175, height = 243, units = "mm")
+#ggsave("sig6reconstruction_3.png", plot = dilution.list[[3]], dpi = 300, width = 175, height = 243, units = "mm")
+#ggsave("sig6reconstruction_4.png", plot = dilution.list[[4]], dpi = 300, width = 175, height = 243, units = "mm")
+#ggsave("sig6reconstruction_5.png", plot = dilution.list[[5]], dpi = 300, width = 175, height = 243, units = "mm")
 ```
 
 ## File of all signatures diluted with FFPE noise
 
-```{r}
+```{r, include=FALSE}
 #columns in data frame
 sens = vector(mode = "list", length = length(signature.names))
 spec = vector(mode = "list", length = length(signature.names))
