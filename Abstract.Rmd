@@ -49,7 +49,6 @@ vector_to_matrix <- function(mutations.vector){
 }
 ```
 
-
 ```{r, include=FALSE}
 #load FFPE signature as a matrix
 ffpe.signature <- as.matrix(load_old_mutational_matrix("supplied_results/ffpe.signature.txt"))
@@ -132,6 +131,7 @@ signatures.plot
 ```
 
 # Diagram of Simulating Data
+
 ```{r, include=FALSE}
 signature4.plot <- plot_96_profile(signature.4.mat)+
   labs(title = "Signature 4", x = "Context")+
@@ -340,9 +340,270 @@ legend("bottomright", c("SBS4", "SBS6"),
 dev.off()
 ```
 
+# Accuracy vs Cosine similarity to FFPE
+
+We first create a function that mixes mutations from FFPE and another given mutational signature and calls the bayes classifier `get_classification_df`
+
+```{r}
+test_mix_mutations <- function (cosmic_idx, num_cosmic, num_ffpe) {
+
+  # Create baseline mutations
+  baseline_sig <- signature.matrix.list[[cosmic_idx]]
+  baseline_name <- signature.names[cosmic_idx]
+  baseline_mut_vec <- create_signature_sample_vector(baseline_sig, num_cosmic)
+  
+  # Create FFPE mutations
+  ffpe_mut_vec <- create_signature_sample_vector(ffpe.signature, num_ffpe)
+
+  # Call excerno classification and format as a tibble
+  get_classification_df (list(baseline_mut_vec, ffpe_mut_vec), 
+                          c(baseline_name,"FFPE"), 
+                          list(baseline_sig, ffpe.signature)) %>% 
+    as_tibble()
+}
+```
+
+And we try `test_mix_mutations` and plot the results to check it is working:
+
+```{r}
+set.seed(12345)
+test_tbl <- test_mix_mutations(1,500,500)
+
+test_tbl %>%
+  select (mutations, truth, SBS1, FFPE) %>%
+  pivot_longer(c(SBS1, FFPE)) %>%
+  ggplot(aes(x=truth, y=value, fill=name)) +
+    geom_boxplot() 
+
+```
+
+Now let's create a function that calculates the performance metrics (sensitivity, specificity, accuracy) on the output of `test_mix_mutations`
+
+```{r}
+calc_metrics_mix <- function (cosmic_idx, num_cosmic, num_ffpe) {
+  
+  baseline_name <- signature.names[cosmic_idx]
+  test_tbl <- test_mix_mutations(cosmic_idx,num_cosmic,num_ffpe)
+  
+  tp <- test_tbl %>%
+    filter(truth == baseline_name & classify == baseline_name) %>%
+    count() %>%
+    pull(n)
+  
+  fp <- test_tbl %>%
+    filter(truth != baseline_name & classify == baseline_name) %>%
+    count() %>%
+    pull(n)
+    
+  fn <- test_tbl %>%
+    filter(truth == baseline_name & classify == "FFPE") %>%
+    count() %>%
+    pull(n)
+  
+  tn <- test_tbl %>%
+    filter(truth == "FFPE" & classify == "FFPE") %>%
+    count() %>%
+    pull(n)
+  
+  tibble(
+    Sensitivity = tp / (tp +fn),
+    Specificity = tn / (tp + fn),
+    Accuracy = (tp +tn) /(tp+tn+fp+fn))
+}
+
+```
+
+And we test our method:
+
+```{r}
+set.seed(12345)
+
+calc_metrics_mix(1,500,500)
+calc_metrics_mix(4,500,500)
+calc_metrics_mix(6,500,500)
+```
+
+We create a function that calculates the average metrics over a fixed number of simulations `num_iter` and test it
+
+```{r}
+calc_metrics_mix_num <- function (cosmic_idx, num_iter, num_cosmic, num_ffpe) {
+
+  baseline_name <- signature.names[cosmic_idx]
+  
+  1:num_iter %>% 
+    map_dfr(~calc_metrics_mix(cosmic_idx,num_cosmic,num_ffpe))  %>%
+    pivot_longer(1:3) %>% 
+    group_by(name) %>%
+    summarize(mean = mean(value)) %>%
+    mutate(sbs = baseline_name)
+    
+}
+
+calc_metrics_mix_num(1,10,500,500)
+calc_metrics_mix_num(4,10,500,500)
+calc_metrics_mix_num(6,10,500,500)
+```
+
+
+Finally we are ready to generate the data over all of COSMIC mutational signatures, using 10 iterations and 500 mutations for FFPE and 500 mutations from the baseline COSMIC signature
+
+
+```{r}
+sbs_num = length(signature.names)
+base_num = 500
+ffpe_num = 500
+reps = 10 
+
+set.seed(123456)
+sim_tbl <- 1:sbs_num %>%
+  map_dfr(~calc_metrics_mix_num(.x, reps, base_num, ffpe_num))
+```
+
+First we summarize the metrics across all the COSMIC mutational signatures
+
+```{r}
+library(kableExtra)
+
+sim_tbl <- sim_tbl %>%
+  mutate (name = factor (name, 
+                         levels = c("Sensitivity", "Specificity","Accuracy"))) 
+sim_tbl %>%
+  ggplot(aes(mean))+
+  geom_histogram(binwidth = 0.025)+
+  facet_grid(.~name) +
+  labs(x="Metric across all COSMIC signatures")
+
+ggsave("paper_figures/supp3.png", dpi = 300, width = 175, height = 75, units = "mm")
+
+summary_tbl <- sim_tbl %>%
+  group_by(name) %>%
+  summarize (median = median (mean),
+           IQR = IQR(mean)) %>%
+  mutate_if(is.numeric, format, digits=2)
+
+summary_tbl %>%
+  kbl() %>%
+  kable_styling()
+```
+
+Now we explore the relationship of the performance metrics against the similarity between the baseline signature and FFPE using a figure
+
+```{r}
+library(broom)
+sim_tbl <- sim_tbl %>%
+  mutate (ffpe_cos = rep(ffpe.cosmic.cos.sims, each=3))
+
+sim_tbl %>%
+  ggplot(aes(x=ffpe_cos, mean)) +
+  geom_point()+
+  geom_smooth(method="lm", formula = "y~x")+
+  facet_grid(~name)
+
+```
+
+And using a linear model
+
+```{r}
+lm_metric<- lm(mean ~ name:ffpe_cos, data = sim_tbl)
+
+tidy(lm_metric) %>%
+  kbl() %>%
+  kable_styling()
+
+glance(lm_metric) %>%
+  kbl() %>%
+  kable_styling()
+```
+
+
+We define a function to represent the mutational signatures that fall below a threshold for a particular metric.
+
+```{r}
+plot_metrics_excerno <- function (tbl, metric, threshold) {
+
+  # Subset the table to the specific metric  
+  new_tbl <- filter(tbl, name==metric) 
+  # Identify signature that fall below the threshold
+  outliers <- filter( new_tbl, mean < threshold)
+  # Extract signatures SBS4 and SBS6 as a fixe reference in the graph
+  fixed_sbs <- filter( new_tbl, sbs == "SBS4" | sbs == "SBS6")
+
+  ggplot(new_tbl, aes(x = ffpe_cos, y = mean))+
+    geom_point()+
+    geom_smooth(method = "lm", se=FALSE)+
+    geom_point(data = outliers, color = "red")+
+    geom_point(data = fixed_sbs, color = "red")+
+    geom_hline(yintercept=threshold, linetype="dashed", color = "red")+
+    geom_label_repel(data=outliers, 
+                   aes(label = sbs),
+                   max.overlaps = 10, 
+                   label.size = .1)+
+    geom_label_repel(data=fixed_sbs, 
+                   aes(label = sbs),
+                   max.overlaps = 10, 
+                   label.size =   0.1) +
+   labs(x = "Cosine similarity against FFPE signature", 
+         y = metric )
+}
+```
+
+And we plot all the metrics using a threshold of 80%
+
+
+```{r}
+plot_metrics_excerno(sim_tbl, "Accuracy", 0.8)
+ggsave("paper_figures/fig2b.png", dpi = 300, width = 175, height = 108, units = "mm")
+
+plot_metrics_excerno(sim_tbl, "Sensitivity", 0.8)
+ggsave("paper_figures/supp6.png", dpi = 300, width = 175, height = 108, units = "mm")
+
+plot_metrics_excerno(sim_tbl, "Specificity", 0.8)
+ggsave("paper_figures/supp7.png", dpi = 300, width = 175, height = 108, units = "mm")
+```
+
+And we obtain the linear model for each metric separately and print their information
+
+```{r}
+print_lm_coefs <- function (tbl, metric) {
+  new_tbl <-  filter (tbl, name==metric)
+  lm_metrics<- lm(mean ~ ffpe_cos, data = new_tbl)
+
+  tidy(lm_metrics) %>%
+    mutate_if(is.numeric, format, digits=2)%>%
+    kbl() %>%
+    kable_styling()
+}
+
+print_lm_fit <- function (tbl, metric) {
+  new_tbl <-  filter (tbl, name==metric)
+  lm_metrics<- lm(mean ~ ffpe_cos, data = new_tbl)
+
+  glance(lm_metrics) %>%
+    mutate_if(is.numeric, format, digits=2)%>%
+    kbl() %>%
+    kable_styling()
+}
+
+
+print_lm_coefs(sim_tbl, "Accuracy")
+print_lm_fit(sim_tbl, "Accuracy")
+
+
+print_lm_coefs(sim_tbl, "Sensitivity")
+print_lm_fit(sim_tbl, "Sensitivity")
+
+print_lm_coefs(sim_tbl, "Specificity")
+print_lm_fit(sim_tbl, "Specificity")
+
+
+```
+
+
 
 
 # Scatterplot of Average AUC vs. Cosine Similarity to FFPE
+
+
 ```{r, include=FALSE}
 set.seed(500)
 #outer for loop: loop through each COSMIC v3 signature
@@ -354,8 +615,12 @@ for (x in 1:length(signature.names)){
     #create a sample vector of 100 mutations for the COSMIC signature corresponding to number x
     sample.vec <- create_signature_sample_vector(signature.matrix.list[[x]],500)
     #Create FFPE sample vector of 100 mutations
-    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 100)
-    classification.df.1 <- get_classification_df(list(sample.vec, ffpe.sample.vec), c(signature.names[x],"FFPE"), list(signature.matrix.list[[x]], ffpe.signature))
+    ffpe.sample.vec <- create_signature_sample_vector(ffpe.signature, 500)
+    classification.df.1 <- 
+      get_classification_df(list(sample.vec, ffpe.sample.vec), 
+                            c(signature.names[x],"FFPE"), 
+                            list(signature.matrix.list[[x]], ffpe.signature))
+    
     class.df.colnames <- colnames(classification.df.1)
     sig.name <- class.df.colnames[3]
     classification.df.2 <- classification.df.1 %>%
@@ -539,9 +804,7 @@ summary(model.spec)
 
 ```
 
-
-
-# Dilution performance characteristics 
+# Dilution performance characteristics
 
 ```{r}
 cosmic.sig4 = signature.matrix.list[[4]]
@@ -549,14 +812,12 @@ cosmic.sig6 = signature.matrix.list[[6]]
 ffpe.sig = ffpe.signature
 ```
 
-
 ## Dilution predictions
 
 ```{r}
 num.mut = 1000
 step = seq(10, 990, by = 10)
 ```
-
 
 ```{r}
 probabilities.MMR <- vector(mode = "list", length = length(step))
@@ -595,7 +856,6 @@ for (x in 1:length(step)){
   truth.tob[[x]] <- classification$trueBinary
 }
 ```
-
 
 ```{r}
 test.MMR <- prediction(probabilities.MMR, truth.MMR)
@@ -718,7 +978,6 @@ for (sig in 1:length(signature.matrix.list)){
 }
 ```
 
-
 ```{r}
 #visualize results
 
@@ -752,7 +1011,6 @@ all.sens
 model.all.sens <- lm(max.sens.noise ~ ffpe.cosmic.cos.sims, data = all.sens.df)
 summary(model.all.sens)
 ```
-
 
 ## Specificity
 
@@ -830,7 +1088,6 @@ for (sig in 1:length(signature.matrix.list)){
     }
 }
 ```
-
 
 ```{r}
 #visualize results
@@ -1008,100 +1265,167 @@ table <- table %>%
 <!-- ## Mutational load predictions -->
 
 <!-- ```{r} -->
+
 <!-- step_load = seq(50, 1000, by = 50) -->
+
 <!-- MMR.probabilities <- vector(mode = "list", length = length(step)) -->
+
 <!-- MMR.truth <- vector(mode = "list", length = length(step)) -->
 
 <!-- for (x in 1:length(step)){ -->
+
 <!--   sample.ffpe <- create_signature_sample_vector(ffpe.sig, step[x]/2) -->
+
 <!--   ffpe.truth <- rep("FFPE", step[x]/2) -->
+
 <!--   sample.sig6 <- create_signature_sample_vector(cosmic.sig6, step[x]/2) -->
+
 <!--   sig6.truth <- rep("MMR", step[x]/2) -->
+
 <!--   test <- get_classification_df(list(sample.sig6, sample.ffpe), c("MMR","FFPE"), -->
+
 <!--                                 list(cosmic.sig6, ffpe.sig)) -->
+
 <!--   classification <- test %>% -->
+
 <!--     mutate(trueBinary = ifelse(truth == "MMR",1,0)) -->
 
 <!--   MMR.probabilities[[x]] <- classification$MMR -->
+
 <!--   MMR.truth[[x]] <- classification$trueBinary -->
+
 <!-- } -->
+
 <!-- ``` -->
 
 <!-- ```{r} -->
+
 <!-- tob.probabilities <- vector(mode = "list", length = length(step)) -->
+
 <!-- tob.truth <- vector(mode = "list", length = length(step)) -->
 
 <!-- for (x in 1:length(step)){ -->
+
 <!--   sample.ffpe <- create_signature_sample_vector(ffpe.sig, step[x]/2) -->
+
 <!--   ffpe.truth <- rep("FFPE", step[x]/2) -->
+
 <!--   sample.sig4 <- create_signature_sample_vector(cosmic.sig4, step[x]/2) -->
+
 <!--   sig4.truth <- rep("tob", step[x]/2) -->
+
 <!--   test <- get_classification_df(list(sample.sig4, sample.ffpe), c("Tobacco","FFPE"), -->
+
 <!--                                 list(cosmic.sig4, ffpe.sig)) -->
+
 <!--   classification <- test %>% -->
+
 <!--     mutate(trueBinary = ifelse(truth == "Tobacco",1,0)) -->
 
 <!--   tob.probabilities[[x]] <- classification$Tobacco -->
+
 <!--   tob.truth[[x]] <- classification$trueBinary -->
+
 <!-- } -->
+
 <!-- ``` -->
 
 <!-- ```{r} -->
+
 <!-- load.MMR <- prediction(MMR.probabilities, MMR.truth) -->
+
 <!-- load.tob <- prediction(tob.probabilities, tob.truth) -->
+
 <!-- ``` -->
 
 <!-- ## Sensitivity -->
 
 <!-- ```{r} -->
+
 <!-- load.sens.MMR.vec = evaluate_perf(100, length(step_load), load.MMR, "sens") -->
+
 <!-- load.sens.tob.vec = evaluate_perf(100, length(step_load), load.tob, "sens") -->
+
 <!-- ``` -->
 
 <!-- ```{r} -->
+
 <!-- #plot(step, load.sens.MMR.vec, ylim = c(0,1)) -->
+
 <!-- sensitivity = append(load.sens.MMR.vec, load.sens.tob.vec) -->
+
 <!-- signature.sens = append(rep("MMR", length(load.sens.MMR.vec)), -->
+
 <!--                         rep("Tobacco", length(load.sens.tob.vec))) -->
+
 <!-- dilution = append(step, step) -->
+
 <!-- sens.df <- data.frame(dilution, sensitivity, signature.sens) -->
 
 <!-- ggplot(data = sens.df, mapping = aes(x = dilution,  -->
+
 <!--                                      y = sensitivity,  -->
+
 <!--                                      color = signature.sens)) + -->
+
 <!--   geom_point() + -->
+
 <!--   geom_smooth() + -->
+
 <!--   labs(title = "Sensitivity as a function of mutational load", -->
+
 <!--        x = "Number of mutations in each sample", -->
+
 <!--        y = "Sensitivity value", -->
+
 <!--        color = "True signal") + -->
+
 <!--   coord_cartesian(ylim = c(0,1)) -->
+
 <!-- ``` -->
 
 <!-- ## Specificity -->
 
 <!-- ```{r} -->
+
 <!-- load.spec.MMR.vec = evaluate_perf(100, length(step.load), load.MMR, "spec") -->
+
 <!-- load.spec.tob.vec = evaluate_perf(100, length(step.load), load.tob, "spec") -->
+
 <!-- ``` -->
 
 <!-- ```{r} -->
+
 <!-- #plot(step, load.spec.MMR.vec, ylim = c(0,1)) -->
 
 <!-- specificity = append(load.spec.MMR.vec, load.spec.tob.vec) -->
+
 <!-- signature.spec = append(rep("MMR", length(load.spec.MMR.vec)), -->
+
 <!--                         rep("Tobacco", length(load.spec.tob.vec))) -->
+
 <!-- dilution = append(step, step) -->
+
 <!-- spec.df <- data.frame(dilution, specificity, signature.spec) -->
 
 <!-- ggplot(data = spec.df, mapping = aes(x = dilution,  -->
+
 <!--                                      y = specificity,  -->
+
 <!--                                      color = signature.spec)) + -->
+
 <!--   geom_point() + -->
+
 <!--   geom_smooth() + -->
+
 <!--   labs(title = "Specificity as a function of mutational load", -->
+
 <!--        x = "Number of mutations in each sample", -->
+
 <!--        y = "Specificity value", -->
+
 <!--        color = "True signal") + -->
+
 <!--   coord_cartesian(ylim = c(0,1)) -->
+
 <!-- ``` -->
