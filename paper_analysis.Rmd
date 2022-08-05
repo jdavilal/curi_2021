@@ -238,14 +238,19 @@ And we generate the ROC curve for both datasets and calculate their AUC
 
 
 ```{r}
+scale = seq (0, 1, by=0.2)
+
 (roc_plot <- 
   ggplot(allsim_tbl, aes(d=truth, m=bayes, color=dataset))+
   geom_roc(cutoffs.at = c(0.5), cutoff.labels = c(0.5)) +
   labs(x="False Positive Rate",
        y="True Positive Rate",
-       color="Signature"))
+       color="Signature")+
+  scale_x_continuous(labels=scale, breaks=scale)+
+  scale_y_continuous(labels=scale, breaks=scale))
 
-ggsave("paper_figures/fig2a.png", roc_plot, width = 131.25, height = 108, units = "mm")
+
+ggsave("paper_figures/fig2a.png", roc_plot, width = 150, height = 90, units = "mm")
 
 calc_auc(roc_plot)
 ```
@@ -331,7 +336,7 @@ calc_metrics_mix <- function (cosmic_idx, num_cosmic, num_ffpe) {
   
   tibble(
     Sensitivity = tp / (tp +fn),
-    Specificity = tn / (tp + fn),
+    Specificity = tn / (tn + fp),
     Accuracy = (tp +tn) /(tp+tn+fp+fn))
 }
 
@@ -451,13 +456,17 @@ plot_metrics_excerno <- function (tbl, metric, threshold) {
 And we plot all the metrics using a threshold of 80%
 
 ```{r}
-plot_metrics_excerno(sim_tbl, "Accuracy", 0.8)
+  
+plot_metrics_excerno(sim_tbl, "Accuracy", 0.8) +
+  scale_x_continuous(labels=scale, breaks=scale)
 ggsave("paper_figures/fig2b.png", dpi = 300, width = 175, height = 108, units = "mm")
 
-plot_metrics_excerno(sim_tbl, "Sensitivity", 0.8)
+plot_metrics_excerno(sim_tbl, "Sensitivity", 0.8)+
+    scale_x_continuous(labels=scale, breaks=scale)
 ggsave("paper_figures/supp3.png", dpi = 300, width = 175, height = 108, units = "mm")
 
-plot_metrics_excerno(sim_tbl, "Specificity", 0.8)
+plot_metrics_excerno(sim_tbl, "Specificity", 0.8)+
+  scale_x_continuous(labels=scale, breaks=scale)
 ggsave("paper_figures/supp4.png", dpi = 300, width = 175, height = 108, units = "mm")
 ```
 
@@ -506,6 +515,162 @@ print_lm_fit(sim_tbl, "Sensitivity")
 print_lm_coefs(sim_tbl, "Specificity")
 print_lm_fit(sim_tbl, "Specificity")
 ```
+
+# What is the influence of FFPE percentage in the performance of `excerno`?
+
+We are interested in the performance characteristics of excerno under different percentages of FFPE signature. 
+
+## An initial simulation
+
+So we will mimick our original scenario scenario of SBS4 and SBS6, however this time we will introduce varying proportions going from 5% to 100% every 5%.
+
+Let's start with SBS4 
+
+
+```{r}
+set.seed(654321)
+pct_ffpe = seq (10,90, by=5)
+metrics_order = c("Sensitivity","Specificity", "Accuracy")
+
+sbs4_dilution_tbl <- pct_ffpe %>%
+  map_dfr(~calc_metrics_mix_num(4,10, (100-.x)*10, .x*10)) %>%
+  mutate(pct_ffpe = rep(pct_ffpe, each=3),
+         name = factor (name, levels = metrics_order))
+```
+
+And plot it
+
+```{r}
+ggplot(sbs4_dilution_tbl, 
+       aes(x=pct_ffpe, y=mean)) +
+  geom_point()+
+  geom_smooth(se=FALSE)+
+  facet_grid(name~.) + 
+  geom_hline(yintercept=0.8, linetype="dashed",color = "red")
+```
+
+Seems the metrics stay above 80%, except for specificity at 10% which slightly dips below 80%
+
+Let's do the same analysis with SBS6:
+
+```{r}
+sbs6_dilution_tbl <- pct_ffpe %>%
+  map_dfr(~calc_metrics_mix_num(6,10, (100-.x)*10, .x*10)) %>%
+  mutate(pct_ffpe = rep(pct_ffpe, each=3),
+         name = factor (name, levels = metrics_order))
+
+ggplot(sbs6_dilution_tbl, 
+       aes(x=pct_ffpe, y=mean)) +
+  geom_point()+
+  geom_smooth(se=FALSE)+
+  facet_grid(name~.) + 
+  geom_hline(yintercept=0.8, linetype="dashed",color = "red")
+```
+
+Here we see how sensitivity dips below our threshold for all ffpe percentages *above* 60% ffpe and specificity drops below 80% for all the % ffpe *below* 50%. Accuracy stays mostly above 80% and it is best when there is only one class of mutations (either FFPE or a single SBS)
+
+Let's combine both datasets in a single graph by using color and focus on sensitivity and specificity.
+
+```{r}
+dilution_tbl <- rbind (sbs4_dilution_tbl, sbs6_dilution_tbl)
+
+scale_x = seq (10,90, by=10)
+scale_y = seq (0.2, 1, by=0.2)
+
+dilution_tbl %>%
+  filter (name!="Accuracy") %>%
+  ggplot(aes(x=pct_ffpe, y=mean, color=sbs)) +
+    geom_point()+
+    geom_smooth(se=FALSE)+
+    facet_grid(name~.) + 
+    geom_hline(yintercept=0.8, linetype="dashed",color = "red")+
+    labs(x= "Percent of FFPE signature",
+         y="",
+         color = "Signature")+
+    scale_x_continuous(breaks = scale_x, labels = scale_x)+
+    scale_y_continuous(breaks = scale_y, labels = scale_y)
+
+ggsave("paper_figures/fig3a.png", dpi = 300, width = 150, height = 90, units = "mm")
+```
+
+Notice the trend is that for increasing percent of FFPE signature, the sensitivity decreases, while the specificity increases.
+
+## A general approach
+
+We are interested in assessing the trends in performance metrics across *all* of the signatures in COSMIC. In order to do that we need to create an auxiliary function `calc_dillution_metrics` that generates a tibble with this information for a particular mutational signature. We also create a function `plot_dillution_metrics` that plots this information
+
+```{r}
+calc_dillution_metrics <- function (ffpe_grid, cosmic_idx) {
+  metrics_order = c("Sensitivity","Specificity", "Accuracy")
+  sig_name=factor(signature_names[cosmic_idx], signature_names)
+
+  ffpe_grid %>%
+    map_dfr(~calc_metrics_mix_num(cosmic_idx,10, (100-.x)*10, .x*10)) %>%
+    mutate(pct_ffpe = rep(ffpe_grid, each=3),
+         sbs = sig_name,
+         metric = factor (name, levels = metrics_order)) %>%
+    select(-c(name))
+}
+
+plot_dillution_metrics <- function (sim_tbl) {
+  scale_x = seq (10,90, by=10)
+  scale_y = seq (0.2, 1, by=0.2)
+
+  sim_tbl %>%
+  ggplot(aes(x=pct_ffpe, y=mean, color=sbs)) +
+    geom_point()+
+    geom_smooth(se=FALSE)+
+    facet_grid(metric~.) + 
+    geom_hline(yintercept=0.8, linetype="dashed",color = "red")+
+    labs(x= "Percent of FFPE signature",
+         y="",
+         color = "Signature")+
+    scale_x_continuous(breaks = scale_x, labels = scale_x)+
+    scale_y_continuous(breaks = scale_y, labels = scale_y)
+}
+```
+
+We test our functions for SBS4 and SBS6:
+
+```{r}
+calc_dillution_metrics(pct_ffpe, 4) %>%
+  plot_dillution_metrics()
+
+calc_dillution_metrics(pct_ffpe, 6) %>%
+  plot_dillution_metrics()
+```
+
+Now we are ready to calculate the dillution metrics across all COSMIC mutational signatures (this takes 20min to run)
+
+```{r}
+set.seed(123456)
+# Full dataset run
+sim_dillution_tbl <- 1:sbs_num %>%
+  map_dfr(~calc_dillution_metrics(pct_ffpe, .x))
+```
+
+And we plot the sensitivity and specificity across all levels of FFPE contamination:
+
+```{r}
+scale_x = seq (10,90, by=10)
+scale_y = seq (0.2, 1, by=0.2)
+
+sim_dillution_tbl %>%
+  filter(metric != "Accuracy") %>%
+  ggplot (aes(x=pct_ffpe, y=mean, color=metric)) +
+    geom_point (alpha=0.3) +
+    geom_smooth(method="lm", se=FALSE)+
+    facet_grid(metric~.)+
+    geom_hline(yintercept=0.8, linetype="dashed",color = "red")+
+    scale_x_continuous(breaks = scale_x, labels = scale_x)+
+    scale_y_continuous(breaks = scale_y, labels = scale_y)+
+    labs(x= "Percent of FFPE signature",
+         y="")+
+    theme(legend.position = "none")
+
+ggsave("paper_figures/supp5.png", dpi = 300, width = 150, height = 90, units = "mm")
+```
+
 
 
 ```{r}

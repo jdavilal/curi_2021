@@ -304,18 +304,22 @@ And we generate the ROC curve for both datasets and calculate their AUC
 
 
 ```r
+scale = seq (0, 1, by=0.2)
+
 (roc_plot <- 
   ggplot(allsim_tbl, aes(d=truth, m=bayes, color=dataset))+
   geom_roc(cutoffs.at = c(0.5), cutoff.labels = c(0.5)) +
   labs(x="False Positive Rate",
        y="True Positive Rate",
-       color="Signature"))
+       color="Signature")+
+  scale_x_continuous(labels=scale, breaks=scale)+
+  scale_y_continuous(labels=scale, breaks=scale))
 ```
 
 ![](paper_analysis_files/figure-html/unnamed-chunk-14-1.png)<!-- -->
 
 ```r
-ggsave("paper_figures/fig2a.png", roc_plot, width = 131.25, height = 108, units = "mm")
+ggsave("paper_figures/fig2a.png", roc_plot, width = 150, height = 90, units = "mm")
 
 calc_auc(roc_plot)
 ```
@@ -412,7 +416,7 @@ calc_metrics_mix <- function (cosmic_idx, num_cosmic, num_ffpe) {
   
   tibble(
     Sensitivity = tp / (tp +fn),
-    Specificity = tn / (tp + fn),
+    Specificity = tn / (tn + fp),
     Accuracy = (tp +tn) /(tp+tn+fp+fn))
 }
 ```
@@ -631,7 +635,8 @@ And we plot all the metrics using a threshold of 80%
 
 
 ```r
-plot_metrics_excerno(sim_tbl, "Accuracy", 0.8)
+plot_metrics_excerno(sim_tbl, "Accuracy", 0.8) +
+  scale_x_continuous(labels=scale, breaks=scale)
 ```
 
 ![](paper_analysis_files/figure-html/unnamed-chunk-25-1.png)<!-- -->
@@ -639,7 +644,8 @@ plot_metrics_excerno(sim_tbl, "Accuracy", 0.8)
 ```r
 ggsave("paper_figures/fig2b.png", dpi = 300, width = 175, height = 108, units = "mm")
 
-plot_metrics_excerno(sim_tbl, "Sensitivity", 0.8)
+plot_metrics_excerno(sim_tbl, "Sensitivity", 0.8)+
+    scale_x_continuous(labels=scale, breaks=scale)
 ```
 
 ![](paper_analysis_files/figure-html/unnamed-chunk-25-2.png)<!-- -->
@@ -647,7 +653,8 @@ plot_metrics_excerno(sim_tbl, "Sensitivity", 0.8)
 ```r
 ggsave("paper_figures/supp3.png", dpi = 300, width = 175, height = 108, units = "mm")
 
-plot_metrics_excerno(sim_tbl, "Specificity", 0.8)
+plot_metrics_excerno(sim_tbl, "Specificity", 0.8)+
+  scale_x_continuous(labels=scale, breaks=scale)
 ```
 
 ![](paper_analysis_files/figure-html/unnamed-chunk-25-3.png)<!-- -->
@@ -904,6 +911,188 @@ print_lm_fit(sim_tbl, "Specificity")
 </tbody>
 </table>
 
+# What is the influence of FFPE percentage in the performance of `excerno`?
+
+We are interested in the performance characteristics of excerno under different percentages of FFPE signature. 
+
+## An initial simulation
+
+So we will mimick our original scenario scenario of SBS4 and SBS6, however this time we will introduce varying proportions going from 5% to 100% every 5%.
+
+Let's start with SBS4 
+
+
+
+```r
+set.seed(654321)
+pct_ffpe = seq (10,90, by=5)
+metrics_order = c("Sensitivity","Specificity", "Accuracy")
+
+sbs4_dilution_tbl <- pct_ffpe %>%
+  map_dfr(~calc_metrics_mix_num(4,10, (100-.x)*10, .x*10)) %>%
+  mutate(pct_ffpe = rep(pct_ffpe, each=3),
+         name = factor (name, levels = metrics_order))
+```
+
+And plot it
+
+
+```r
+ggplot(sbs4_dilution_tbl, 
+       aes(x=pct_ffpe, y=mean)) +
+  geom_point()+
+  geom_smooth(se=FALSE)+
+  facet_grid(name~.) + 
+  geom_hline(yintercept=0.8, linetype="dashed",color = "red")
+```
+
+![](paper_analysis_files/figure-html/unnamed-chunk-31-1.png)<!-- -->
+
+Seems the metrics stay above 80%, except for specificity at 10% which slightly dips below 80%
+
+Let's do the same analysis with SBS6:
+
+
+```r
+sbs6_dilution_tbl <- pct_ffpe %>%
+  map_dfr(~calc_metrics_mix_num(6,10, (100-.x)*10, .x*10)) %>%
+  mutate(pct_ffpe = rep(pct_ffpe, each=3),
+         name = factor (name, levels = metrics_order))
+
+ggplot(sbs6_dilution_tbl, 
+       aes(x=pct_ffpe, y=mean)) +
+  geom_point()+
+  geom_smooth(se=FALSE)+
+  facet_grid(name~.) + 
+  geom_hline(yintercept=0.8, linetype="dashed",color = "red")
+```
+
+![](paper_analysis_files/figure-html/unnamed-chunk-32-1.png)<!-- -->
+
+Here we see how sensitivity dips below our threshold for all ffpe percentages *above* 60% ffpe and specificity drops below 80% for all the % ffpe *below* 50%. Accuracy stays mostly above 80% and it is best when there is only one class of mutations (either FFPE or a single SBS)
+
+Let's combine both datasets in a single graph by using color and focus on sensitivity and specificity.
+
+
+```r
+dilution_tbl <- rbind (sbs4_dilution_tbl, sbs6_dilution_tbl)
+
+scale_x = seq (10,90, by=10)
+scale_y = seq (0.2, 1, by=0.2)
+
+dilution_tbl %>%
+  filter (name!="Accuracy") %>%
+  ggplot(aes(x=pct_ffpe, y=mean, color=sbs)) +
+    geom_point()+
+    geom_smooth(se=FALSE)+
+    facet_grid(name~.) + 
+    geom_hline(yintercept=0.8, linetype="dashed",color = "red")+
+    labs(x= "Percent of FFPE signature",
+         y="",
+         color = "Signature")+
+    scale_x_continuous(breaks = scale_x, labels = scale_x)+
+    scale_y_continuous(breaks = scale_y, labels = scale_y)
+```
+
+![](paper_analysis_files/figure-html/unnamed-chunk-33-1.png)<!-- -->
+
+```r
+ggsave("paper_figures/fig3a.png", dpi = 300, width = 150, height = 90, units = "mm")
+```
+
+Notice the trend is that for increasing percent of FFPE signature, the sensitivity decreases, while the specificity increases.
+
+## A general approach
+
+We are interested in assessing the trends in performance metrics across *all* of the signatures in COSMIC. In order to do that we need to create an auxiliary function `calc_dillution_metrics` that generates a tibble with this information for a particular mutational signature. We also create a function `plot_dillution_metrics` that plots this information
+
+
+```r
+calc_dillution_metrics <- function (ffpe_grid, cosmic_idx) {
+  metrics_order = c("Sensitivity","Specificity", "Accuracy")
+  sig_name=factor(signature_names[cosmic_idx], signature_names)
+
+  ffpe_grid %>%
+    map_dfr(~calc_metrics_mix_num(cosmic_idx,10, (100-.x)*10, .x*10)) %>%
+    mutate(pct_ffpe = rep(ffpe_grid, each=3),
+         sbs = sig_name,
+         metric = factor (name, levels = metrics_order)) %>%
+    select(-c(name))
+}
+
+plot_dillution_metrics <- function (sim_tbl) {
+  scale_x = seq (10,90, by=10)
+  scale_y = seq (0.2, 1, by=0.2)
+
+  sim_tbl %>%
+  ggplot(aes(x=pct_ffpe, y=mean, color=sbs)) +
+    geom_point()+
+    geom_smooth(se=FALSE)+
+    facet_grid(metric~.) + 
+    geom_hline(yintercept=0.8, linetype="dashed",color = "red")+
+    labs(x= "Percent of FFPE signature",
+         y="",
+         color = "Signature")+
+    scale_x_continuous(breaks = scale_x, labels = scale_x)+
+    scale_y_continuous(breaks = scale_y, labels = scale_y)
+}
+```
+
+We test our functions for SBS4 and SBS6:
+
+
+```r
+calc_dillution_metrics(pct_ffpe, 4) %>%
+  plot_dillution_metrics()
+```
+
+![](paper_analysis_files/figure-html/unnamed-chunk-35-1.png)<!-- -->
+
+```r
+calc_dillution_metrics(pct_ffpe, 6) %>%
+  plot_dillution_metrics()
+```
+
+![](paper_analysis_files/figure-html/unnamed-chunk-35-2.png)<!-- -->
+
+Now we are ready to calculate the dillution metrics across all COSMIC mutational signatures (this takes 20min to run)
+
+
+```r
+set.seed(123456)
+# Full dataset run
+sim_dillution_tbl <- 1:sbs_num %>%
+  map_dfr(~calc_dillution_metrics(pct_ffpe, .x))
+```
+
+And we plot the sensitivity and specificity across all levels of FFPE contamination:
+
+
+```r
+scale_x = seq (10,90, by=10)
+scale_y = seq (0.2, 1, by=0.2)
+
+sim_dillution_tbl %>%
+  filter(metric != "Accuracy") %>%
+  ggplot (aes(x=pct_ffpe, y=mean, color=metric)) +
+    geom_point (alpha=0.3) +
+    geom_smooth(method="lm", se=FALSE)+
+    facet_grid(metric~.)+
+    geom_hline(yintercept=0.8, linetype="dashed",color = "red")+
+    scale_x_continuous(breaks = scale_x, labels = scale_x)+
+    scale_y_continuous(breaks = scale_y, labels = scale_y)+
+    labs(x= "Percent of FFPE signature",
+         y="")+
+    theme(legend.position = "none")
+```
+
+![](paper_analysis_files/figure-html/unnamed-chunk-37-1.png)<!-- -->
+
+```r
+ggsave("paper_figures/supp5.png", dpi = 300, width = 150, height = 90, units = "mm")
+```
+
+
 
 
 ```r
@@ -940,34 +1129,33 @@ sessionInfo()
 ## [25] rngtools_1.5.2           pkgmaker_0.32.2          registry_0.5-1          
 ## 
 ## loaded via a namespace (and not attached):
-##  [1] colorspace_2.0-3       ellipsis_0.3.2         XVector_0.32.0        
-##  [4] fs_1.5.0               rstudioapi_0.13        farver_2.1.0          
-##  [7] bit64_4.0.5            fansi_1.0.3            lubridate_1.8.0       
-## [10] xml2_1.3.3             codetools_0.2-18       splines_4.1.0         
-## [13] doParallel_1.0.16      knitr_1.36             jsonlite_1.8.0        
-## [16] gridBase_0.4-7         dbplyr_2.1.1           compiler_4.1.0        
-## [19] httr_1.4.2             backports_1.4.0        Matrix_1.3-4          
-## [22] assertthat_0.2.1       fastmap_1.1.0          cli_3.2.0             
-## [25] htmltools_0.5.2        tools_4.1.0            gtable_0.3.0          
-## [28] glue_1.6.2             GenomeInfoDbData_1.2.6 reshape2_1.4.4        
-## [31] Rcpp_1.0.8.3           cellranger_1.1.0       jquerylib_0.1.4       
-## [34] vctrs_0.4.1            svglite_2.0.0          nlme_3.1-153          
-## [37] iterators_1.0.13       ggalluvial_0.12.3      xfun_0.23             
-## [40] rvest_1.0.2            lifecycle_1.0.1        zlibbioc_1.38.0       
-## [43] scales_1.2.0           vroom_1.5.7            hms_1.1.1             
-## [46] RColorBrewer_1.1-3     yaml_2.3.5             sass_0.4.0            
-## [49] stringi_1.7.6          highr_0.9              foreach_1.5.1         
-## [52] rlang_1.0.2            pkgconfig_2.0.3        systemfonts_1.0.3     
-## [55] bitops_1.0-7           lattice_0.20-45        pracma_2.3.6          
-## [58] evaluate_0.14          labeling_0.4.2         bit_4.0.4             
-## [61] tidyselect_1.1.2       plyr_1.8.7             magrittr_2.0.1        
-## [64] R6_2.5.1               generics_0.1.2         DBI_1.1.1             
-## [67] pillar_1.7.0           haven_2.4.3            withr_2.5.0           
-## [70] mgcv_1.8-38            RCurl_1.98-1.5         modelr_0.1.8          
-## [73] crayon_1.5.1           utf8_1.2.2             tzdb_0.2.0            
-## [76] rmarkdown_2.11         grid_4.1.0             readxl_1.3.1          
-## [79] reprex_2.0.1           digest_0.6.29          webshot_0.5.2         
-## [82] xtable_1.8-4           munsell_0.5.0          viridisLite_0.4.0     
-## [85] bslib_0.3.1
+##  [1] nlme_3.1-153           fs_1.5.0               bitops_1.0-7          
+##  [4] lubridate_1.8.0        webshot_0.5.2          doParallel_1.0.16     
+##  [7] RColorBrewer_1.1-3     httr_1.4.2             tools_4.1.0           
+## [10] backports_1.4.0        bslib_0.3.1            utf8_1.2.2            
+## [13] R6_2.5.1               mgcv_1.8-38            DBI_1.1.1             
+## [16] colorspace_2.0-3       withr_2.5.0            tidyselect_1.1.2      
+## [19] compiler_4.1.0         rvest_1.0.2            cli_3.2.0             
+## [22] xml2_1.3.3             labeling_0.4.2         sass_0.4.0            
+## [25] scales_1.2.0           systemfonts_1.0.3      digest_0.6.29         
+## [28] svglite_2.0.0          rmarkdown_2.11         XVector_0.32.0        
+## [31] pkgconfig_2.0.3        htmltools_0.5.2        highr_0.9             
+## [34] dbplyr_2.1.1           fastmap_1.1.0          rlang_1.0.2           
+## [37] readxl_1.3.1           rstudioapi_0.13        farver_2.1.0          
+## [40] jquerylib_0.1.4        generics_0.1.2         jsonlite_1.8.0        
+## [43] RCurl_1.98-1.5         magrittr_2.0.1         GenomeInfoDbData_1.2.6
+## [46] Matrix_1.3-4           Rcpp_1.0.8.3           munsell_0.5.0         
+## [49] fansi_1.0.3            lifecycle_1.0.1        stringi_1.7.6         
+## [52] yaml_2.3.5             ggalluvial_0.12.3      zlibbioc_1.38.0       
+## [55] plyr_1.8.7             grid_4.1.0             crayon_1.5.1          
+## [58] lattice_0.20-45        splines_4.1.0          haven_2.4.3           
+## [61] hms_1.1.1              knitr_1.36             pillar_1.7.0          
+## [64] reshape2_1.4.4         codetools_0.2-18       reprex_2.0.1          
+## [67] glue_1.6.2             evaluate_0.14          modelr_0.1.8          
+## [70] vctrs_0.4.1            tzdb_0.2.0             foreach_1.5.1         
+## [73] cellranger_1.1.0       gtable_0.3.0           assertthat_0.2.1      
+## [76] xfun_0.23              gridBase_0.4-7         xtable_1.8-4          
+## [79] pracma_2.3.6           viridisLite_0.4.0      iterators_1.0.13      
+## [82] ellipsis_0.3.2
 ```
 
