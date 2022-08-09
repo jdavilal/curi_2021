@@ -396,7 +396,7 @@ sim_tbl <- sim_tbl %>%
                          levels = c("Sensitivity", "Specificity","Accuracy"))) 
 sim_tbl %>%
   ggplot(aes(mean))+
-  geom_histogram(binwidth = 0.025)+
+  geom_histogram(binwidth = 0.025, color="black", fill="lightblue")+
   facet_grid(.~name) +
   labs(x="Metric across all COSMIC signatures")
 
@@ -432,42 +432,41 @@ sim_tbl %>%
 We define a function to represent the mutational signatures that fall below a threshold for a particular metric.
 
 ```{r}
-plot_metrics_excerno <- function (tbl, metric, threshold) {
+plot_metrics_excerno <- function (tbl, metrics, threshold) {
 
+  fixed_sbs <- c("SBS4", "SBS6") # Fixed signatures
+  
   # Subset the table to the specific metric  
-  new_tbl <- filter(tbl, name==metric) 
+  new_tbl <- filter(tbl, name %in% metrics) 
   # Identify signature that fall below the threshold
-  outliers <- filter( new_tbl, (mean < threshold) | sbs == "SBS4" | sbs == "SBS6")
+  fixed_below <- filter( new_tbl, (mean < threshold) & (sbs%in% fixed_sbs))
+  fixed_above <- filter( new_tbl, (mean > threshold) & (sbs%in% fixed_sbs))
+  
 
   ggplot(new_tbl, aes(x = ffpe_cos, y = mean))+
     geom_point()+
     geom_smooth(method = "lm", se=FALSE)+
-    geom_point(data = outliers, color = "red")+
+    geom_point(data = fixed_below, color = "red")+
+    geom_point(data = fixed_above, color = "deepskyblue")+
     geom_hline(yintercept=threshold, linetype="dashed", color = "red")+
-    geom_label_repel(data=outliers, 
-                   aes(label = sbs),
-                   max.overlaps = 10, 
-                   label.size = .1)+
+    geom_label_repel(data=fixed_below, aes(label=sbs))+
+    geom_label_repel(data=fixed_above, aes(label=sbs))+
     labs(x = "Cosine similarity against FFPE signature", 
-         y = metric )
+         y="")+
+    facet_wrap(.~name, strip.position="left")+
+    theme(strip.text.y = element_text(size = 15),
+          axis.title.x = element_text (size=15))
 }
 ```
 
 And we plot all the metrics using a threshold of 80%
 
 ```{r}
+plot_metrics_excerno(sim_tbl, c("Sensitivity", "Specificity"),0.8)+
+  scale_x_continuous(labels=scale, breaks=scale)
+
+ggsave("paper_figures/fig2b.png", dpi = 300, width = 180, height = 90, units = "mm")
   
-plot_metrics_excerno(sim_tbl, "Accuracy", 0.8) +
-  scale_x_continuous(labels=scale, breaks=scale)
-ggsave("paper_figures/fig2b.png", dpi = 300, width = 175, height = 108, units = "mm")
-
-plot_metrics_excerno(sim_tbl, "Sensitivity", 0.8)+
-    scale_x_continuous(labels=scale, breaks=scale)
-ggsave("paper_figures/supp3.png", dpi = 300, width = 175, height = 108, units = "mm")
-
-plot_metrics_excerno(sim_tbl, "Specificity", 0.8)+
-  scale_x_continuous(labels=scale, breaks=scale)
-ggsave("paper_figures/supp4.png", dpi = 300, width = 175, height = 108, units = "mm")
 ```
 
 And we create auxiliar function for getting the coefficients of the linear model and their fit
@@ -524,7 +523,7 @@ We are interested in the performance characteristics of excerno under different 
 
 So we will mimick our original scenario scenario of SBS4 and SBS6, however this time we will introduce varying proportions going from 5% to 100% every 5%.
 
-Let's start with SBS4 
+Let's start with SBS4:
 
 
 ```{r}
@@ -565,11 +564,12 @@ ggplot(sbs6_dilution_tbl,
   geom_smooth(se=FALSE)+
   facet_grid(name~.) + 
   geom_hline(yintercept=0.8, linetype="dashed",color = "red")
+  
 ```
 
 Here we see how sensitivity dips below our threshold for all ffpe percentages *above* 60% ffpe and specificity drops below 80% for all the % ffpe *below* 50%. Accuracy stays mostly above 80% and it is best when there is only one class of mutations (either FFPE or a single SBS)
 
-Let's combine both datasets in a single graph by using color and focus on sensitivity and specificity.
+Let's combine both datasets in a single graph, coloring by signature
 
 ```{r}
 dilution_tbl <- rbind (sbs4_dilution_tbl, sbs6_dilution_tbl)
@@ -578,19 +578,22 @@ scale_x = seq (10,90, by=10)
 scale_y = seq (0.2, 1, by=0.2)
 
 dilution_tbl %>%
-  filter (name!="Accuracy") %>%
+  filter(name != "Accuracy") %>%
   ggplot(aes(x=pct_ffpe, y=mean, color=sbs)) +
     geom_point()+
-    geom_smooth(se=FALSE)+
-    facet_grid(name~.) + 
+    geom_smooth(se=FALSE,formula=y~x, method=loess)+
+    facet_wrap(.~name, strip.position="left")+
     geom_hline(yintercept=0.8, linetype="dashed",color = "red")+
     labs(x= "Percent of FFPE signature",
          y="",
          color = "Signature")+
     scale_x_continuous(breaks = scale_x, labels = scale_x)+
-    scale_y_continuous(breaks = scale_y, labels = scale_y)
+    scale_y_continuous(breaks = scale_y, labels = scale_y)+
+    theme(strip.text.y = element_text(size = 15),
+          axis.title.x = element_text (size=15))
+  
 
-ggsave("paper_figures/fig3a.png", dpi = 300, width = 150, height = 90, units = "mm")
+ggsave("paper_figures/fig3a.png", dpi = 300, width = 180, height = 90, units = "mm")
 ```
 
 Notice the trend is that for increasing percent of FFPE signature, the sensitivity decreases, while the specificity increases.
@@ -647,29 +650,229 @@ set.seed(123456)
 # Full dataset run
 sim_dillution_tbl <- 1:sbs_num %>%
   map_dfr(~calc_dillution_metrics(pct_ffpe, .x))
+
+rep_ffpe_cos <- rep(ffpe_cosmic_cos_sims, each=length(pct_ffpe)*3)
+
+sim_dillution_tbl <-  sim_dillution_tbl %>%
+  mutate (ffpe_cos = rep_ffpe_cos)
 ```
 
-And we plot the sensitivity and specificity across all levels of FFPE contamination:
+And we plot the sensitivity and specificity across all levels of FFPE contamination as a scatter plot:
 
 ```{r}
 scale_x = seq (10,90, by=10)
 scale_y = seq (0.2, 1, by=0.2)
 
 sim_dillution_tbl %>%
-  filter(metric != "Accuracy") %>%
-  ggplot (aes(x=pct_ffpe, y=mean, color=metric)) +
-    geom_point (alpha=0.3) +
-    geom_smooth(method="lm", se=FALSE)+
-    facet_grid(metric~.)+
-    geom_hline(yintercept=0.8, linetype="dashed",color = "red")+
+  filter (metric!="Accuracy") %>%
+  ggplot (aes(x=pct_ffpe, y=mean)) +
+    geom_smooth(se=FALSE, method="loess", formula="y~x", size=.75)+
+    geom_point (alpha=0.2) +
+    facet_wrap(.~metric, strip.position="left")+
+    geom_hline(yintercept=0.8, linetype="dashed",color = "red", size=0.5)+
     scale_x_continuous(breaks = scale_x, labels = scale_x)+
     scale_y_continuous(breaks = scale_y, labels = scale_y)+
     labs(x= "Percent of FFPE signature",
          y="")+
-    theme(legend.position = "none")
+    theme(strip.text.y = element_text(size = 15),
+          axis.title.x = element_text (size=15))
 
-ggsave("paper_figures/supp5.png", dpi = 300, width = 150, height = 90, units = "mm")
+
+ggsave("paper_figures/supp2.png", dpi = 300, width = 180, height = 90, units = "mm")
 ```
+
+We are interested in plotting the performance characteristics across multiple dillution levels so we define a function to do that:
+
+```{r}
+plot_metrics_grid_excerno <- function (tbl, grid, fixed_sbs, metrics, threshold) {
+
+  # Subset the table to the specific metric  
+  new_tbl <- filter(tbl, metric %in% metrics & pct_ffpe %in% grid) 
+  fixed_below <- filter( new_tbl, (mean < threshold) & (sbs%in% fixed_sbs))
+  fixed_above <- filter( new_tbl, (mean > threshold) & (sbs%in% fixed_sbs))
+  
+
+  grid.labs <- str_c(grid,"% FFPE")
+  names(grid.labs) <- grid
+  
+  ggplot(new_tbl, aes(x = ffpe_cos, y = mean))+
+    geom_point()+
+    geom_smooth(method = "lm", se=FALSE, formula="y~x")+
+    geom_hline(yintercept=threshold, linetype="dashed", color = "red")+
+    geom_point(data = fixed_below, color = "red")+
+    geom_point(data = fixed_above, color = "deepskyblue")+
+    geom_label_repel(data=fixed_below, aes(label=sbs))+
+    geom_label_repel(data=fixed_above, aes(label=sbs))+
+    facet_grid(pct_ffpe~metric, labeller=labeller(pct_ffpe=grid.labs))+
+    labs(x = "Cosine similarity against FFPE signature", 
+         y = "")+
+    theme(strip.text.x = element_text(size = 15),
+          strip.text.y = element_text(size = 12),
+          axis.title.x = element_text (size=15))
+}
+```
+
+
+```{r}
+perf_grid = c(10,30,50,70,90)
+plot_metrics_grid_excerno(sim_dillution_tbl, perf_grid, 
+                          fixed_sbs, c("Sensitivity","Specificity"),0.8)
+ggsave("paper_figures/fig3b.png", dpi = 300, width = 150, height = 150, units = "mm")
+```
+
+From these graphs we observe that
+
+* In the sensitivity plot, the slope of the trend line decreases as the percent FFPE increases.
+* In the specificity plot, the slope of the trend line increases as the percent FFPE increases.
+
+In order to quantify and make these observations more precise we will build linear models with an interaction term between the cosine similarity against the FFPE signature and the percent FFPE. In order to do that we need the following functions:
+
+
+```{r}
+print_lm_coefs <- function (tbl, metric_name, formula) {
+  new_tbl <-  filter (tbl, metric==metric_name)
+  lm_metrics<- lm(formula, data = new_tbl)
+
+  tidy(lm_metrics) %>%
+    mutate_if(is.numeric, format, digits=1)%>%
+    kbl() %>%
+    kable_styling()
+}
+
+print_lm_fit <- function (tbl, metric_name, formula) {
+  new_tbl <-  filter (tbl, metric==metric_name)
+  lm_metrics<- lm(formula, data = new_tbl)
+
+  glance(lm_metrics) %>%
+    mutate_if(is.numeric, format, digits=2)%>%
+    kbl() %>%
+    kable_styling()
+}
+
+```
+
+Here is the information for each of the performance characteristics:
+
+```{r}
+sim_dillution_tbl <- sim_dillution_tbl %>%
+  mutate(ffpe = pct_ffpe/100)
+```
+
+
+* Sensitivity:
+
+```{r}
+print_lm_coefs(sim_dillution_tbl, "Sensitivity", "mean~ffpe*ffpe_cos")
+print_lm_fit(sim_dillution_tbl, "Sensitivity", "mean~ffpe*ffpe_cos")
+```
+
+* Specificity
+
+```{r}
+print_lm_coefs(sim_dillution_tbl, "Specificity", "mean~ffpe*ffpe_cos")
+print_lm_fit(sim_dillution_tbl, "Specificity", "mean~ffpe*ffpe_cos")
+```
+
+
+## Another way to look at it (Omit)
+
+We know that
+
+* Sensitivity is a decreasing function of percent FFPE.
+* Specificity is an increasing function of percent FFPE.
+
+We would like to summarize this characteristics more succintly and establish the relationship with the similarity against the FFPE signature. To do that we will we fix a threshold value in 80% and:
+
+* We will record the maximum ffpe where sensitivity drops below this threshold. We will call this **maximum permissible sensitivy FFPE* 
+* We will record the first percent ffpe where specificity rises above this threshold **minimum permissible specificity FFPE* 
+
+```{r}
+threshold <- 0.8
+
+sens_thres_tbl <- sim_dillution_tbl %>%
+  filter (metric == "Sensitivity") %>%
+  filter(mean>threshold) %>%
+  group_by (sbs) %>%
+  slice (which.max(pct_ffpe)) %>%
+  ungroup() %>%
+  mutate(cos = ffpe_cosmic_cos_sims)
+
+spec_thres_tbl <- sim_dillution_tbl %>%
+  filter (metric == "Specificity" ) %>%
+  filter (mean > threshold) %>%
+  group_by (sbs) %>%
+  slice (which.min(pct_ffpe)) %>%
+  ungroup() %>%
+  mutate(cos = ffpe_cosmic_cos_sims)
+```
+
+Let's look at the distribution of those thresholds
+
+```{r}
+sens_thres_tbl %>%
+  summarize (median = median (mean),
+           IQR = IQR(mean)) %>%
+  mutate_if(is.numeric, format, digits=2) %>%
+  kbl() %>%
+  kable_styling()
+
+spec_thres_tbl %>%
+  summarize (median = median (mean),
+           IQR = IQR(mean)) %>%
+  mutate_if(is.numeric, format, digits=2) %>%
+  kbl() %>%
+  kable_styling()
+
+
+ggplot(sens_thres_tbl, aes(x=pct_ffpe))+
+  geom_histogram(binwidth=5, color="black", fill="lightblue")+
+  labs(x= "Percent of FFPE signature",
+       y="Number")
+    
+
+ggplot(spec_thres_tbl, aes(x=pct_ffpe))+
+  geom_histogram(binwidth=5, color="black", fill="lightblue")+
+  labs(x= "Percent of FFPE signature",
+       y="Number")
+
+```
+
+
+And let's plot the relationship with similarity against the FFPE signature:
+
+```{r}
+sens_thres_tbl %>%
+  ggplot (aes(cos, pct_ffpe)) +
+  geom_point() + 
+  geom_smooth(method="lm", formula = "y~x")+
+  scale_x_continuous(breaks = scale_y, labels = scale_y)+
+  scale_y_continuous(breaks = scale_x, labels = scale_x)+
+  labs(x= "Cosine similarity against FFPE",
+         y="Extreme percent FFPE")
+  
+spec_thres_tbl %>%
+  ggplot (aes(cos, pct_ffpe)) +
+  geom_point() + 
+  geom_smooth(method="lm", formula = "y~x")+
+  scale_x_continuous(breaks = scale_y, labels = scale_y)+
+  scale_y_continuous(breaks = scale_x, labels = scale_x)+
+  labs(x= "Cosine similarity against FFPE",
+         y="Extreme percent FFPE")
+
+```
+
+
+And the linear model metrics for each case:
+
+```{r}
+sens_thres_lm <- lm (pct_ffpe ~ cos, sens_thres_tbl)
+
+spec_thres_lm <- lm (pct_ffpe ~ cos, spec_thres_tbl)
+
+summary(sens_thres_lm)
+summary(spec_thres_lm)
+```
+
 
 
 
