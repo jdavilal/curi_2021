@@ -255,13 +255,13 @@ ggsave("paper_figures/fig2a.png", roc_plot, width = 150, height = 90, units = "m
 calc_auc(roc_plot)
 ```
 
-# When is `excerno` a good classifier?
+# The effect of mutational signatures in `excerno`
 
-We hypothesize that the performance of our classifier depends on how different the base mutational signature is from the FFPE signature. 
+We hypothesize that the performance of our classifier depends on how the similarity of the base mutational signature against the FFPE signature.
 
 ## Initial Setup
 
-A straightforward way of calculating the similarity across signatures the cosine similarity. So we first generate the cosine similarity of all the COSMIC signatures against the FFPE signature:
+A straightforward way of calculating the similarity across signatures is the cosine similarity. So we first generate the cosine similarity of all the COSMIC signatures against the FFPE signature:
 
 ```{r}
 ffpe_cosmic_cos_sims <- vector(length=length(signature_names))
@@ -292,7 +292,7 @@ test_mix_mutations <- function (cosmic_idx, num_cosmic, num_ffpe) {
 }
 ```
 
-And we try `test_mix_mutations` and plot the results to check it is working:
+We try `test_mix_mutations` and plot the results to check it is working:
 
 ```{r}
 set.seed(12345)
@@ -352,7 +352,7 @@ calc_metrics_mix(4,500,500)
 calc_metrics_mix(6,500,500)
 ```
 
-We create a function that calculates the average metrics over a fixed number of simulations `num_iter` and test it
+Finally we create a function `calc_metrics_mix_num` that calculates the average metrics across a fixed number of simulations `num_iter` 
 
 ```{r}
 calc_metrics_mix_num <- function (cosmic_idx, num_iter, num_cosmic, num_ffpe) {
@@ -366,16 +366,19 @@ calc_metrics_mix_num <- function (cosmic_idx, num_iter, num_cosmic, num_ffpe) {
     summarize(mean = mean(value)) %>%
     mutate(sbs = baseline_name)
 }
+```
 
+And we test it using our to-go signatures `SBS1`, `SBS4`, and `SBS6`
+
+```{r}
 calc_metrics_mix_num(1,10,500,500)
 calc_metrics_mix_num(4,10,500,500)
 calc_metrics_mix_num(6,10,500,500)
 ```
 
-## Simulations across all COSMIC signatures
+## Testing across all COSMIC signatures
 
 We are ready to generate the data over all of COSMIC mutational signatures, using 10 iterations and 500 mutations for FFPE and 500 mutations from the baseline COSMIC signature
-
 
 ```{r}
 sbs_num = length(signature_names)
@@ -388,7 +391,7 @@ sim_tbl <- 1:sbs_num %>%
   map_dfr(~calc_metrics_mix_num(.x, reps, base_num, ffpe_num))
 ```
 
-First we summarize the metrics across all the COSMIC mutational signatures
+We summarize the performance metrics across all the COSMIC mutational signatures
 
 ```{r}
 sim_tbl <- sim_tbl %>%
@@ -399,8 +402,6 @@ sim_tbl %>%
   geom_histogram(binwidth = 0.025, color="black", fill="lightblue")+
   facet_grid(.~name) +
   labs(x="Metric across all COSMIC signatures")
-
-ggsave("paper_figures/supp2.png", dpi = 300, width = 175, height = 75, units = "mm")
 
 summary_tbl <- sim_tbl %>%
   group_by(name) %>%
@@ -413,10 +414,9 @@ summary_tbl %>%
   kable_styling()
 ```
 
+## Performance metrics vs similarity against FFPE signature
 
-## Performance characteristics vs similarity against FFPE signature
-
-Now we explore the relationship of the performance metrics against the similarity between the baseline signature and FFPE using a figure
+Now we explore the relationship of the performance metrics against the similarity between the baseline signature and FFPE :
 
 ```{r}
 sim_tbl <- sim_tbl %>%
@@ -429,7 +429,9 @@ sim_tbl %>%
   facet_grid(~name)
 ```
 
-We define a function to represent the mutational signatures that fall below a threshold for a particular metric.
+To a varying extent it seems there is a linear trend across all the mutational signatures.
+
+Now we define a function that polishes the previous graph and plots two signatures on it (`SBS4` and `SBS6`). The two fixed signatues will have different shape and color depending on whether or not they meet a threshold of 80%
 
 ```{r}
 plot_metrics_excerno <- function (tbl, metrics, threshold) {
@@ -446,8 +448,8 @@ plot_metrics_excerno <- function (tbl, metrics, threshold) {
   ggplot(new_tbl, aes(x = ffpe_cos, y = mean))+
     geom_point()+
     geom_smooth(method = "lm", se=FALSE)+
-    geom_point(data = fixed_below, color = "red")+
-    geom_point(data = fixed_above, color = "deepskyblue")+
+    geom_point(data = fixed_below, fill = "red", shape=24, size=3)+
+    geom_point(data = fixed_above, fill = "blue",shape=22, size=3)+
     geom_hline(yintercept=threshold, linetype="dashed", color = "red")+
     geom_label_repel(data=fixed_below, aes(label=sbs))+
     geom_label_repel(data=fixed_above, aes(label=sbs))+
@@ -469,7 +471,7 @@ ggsave("paper_figures/fig2b.png", dpi = 300, width = 180, height = 90, units = "
   
 ```
 
-And we create auxiliar function for getting the coefficients of the linear model and their fit
+And we create a function for getting the coefficients of the linear model and their fit
 
 ```{r}
 print_lm_coefs <- function (tbl, metric) {
@@ -515,16 +517,15 @@ print_lm_coefs(sim_tbl, "Specificity")
 print_lm_fit(sim_tbl, "Specificity")
 ```
 
-# What is the influence of FFPE percentage in the performance of `excerno`?
+# The effect of FFPE percent in the performance of `excerno`.
 
 We are interested in the performance characteristics of excerno under different percentages of FFPE signature. 
 
 ## An initial simulation
 
-So we will mimick our original scenario scenario of SBS4 and SBS6, however this time we will introduce varying proportions going from 5% to 100% every 5%.
+So we will mimic our original scenario scenario of `SBS4` and `SBS6`, however this time we will introduce varying proportions going from 10% to 90% every 5%.
 
 Let's start with SBS4:
-
 
 ```{r}
 set.seed(654321)
@@ -561,7 +562,7 @@ sbs6_dilution_tbl <- pct_ffpe %>%
 ggplot(sbs6_dilution_tbl, 
        aes(x=pct_ffpe, y=mean)) +
   geom_point()+
-  geom_smooth(se=FALSE)+
+  geom_smooth(se=FALSE, method="loess", formula=y~x)+
   facet_grid(name~.) + 
   geom_hline(yintercept=0.8, linetype="dashed",color = "red")
   
@@ -569,7 +570,7 @@ ggplot(sbs6_dilution_tbl,
 
 Here we see how sensitivity dips below our threshold for all ffpe percentages *above* 60% ffpe and specificity drops below 80% for all the % ffpe *below* 50%. Accuracy stays mostly above 80% and it is best when there is only one class of mutations (either FFPE or a single SBS)
 
-Let's combine both datasets in a single graph, coloring by signature
+Let's combine both datasets in a single graph, focusing on sensitivity and specificity and coloring by signature
 
 ```{r}
 dilution_tbl <- rbind (sbs4_dilution_tbl, sbs6_dilution_tbl)
@@ -579,18 +580,20 @@ scale_y = seq (0.2, 1, by=0.2)
 
 dilution_tbl %>%
   filter(name != "Accuracy") %>%
-  ggplot(aes(x=pct_ffpe, y=mean, color=sbs)) +
+  ggplot(aes(x=pct_ffpe, y=mean, color=sbs, shape=sbs)) +
     geom_point()+
     geom_smooth(se=FALSE,formula=y~x, method=loess)+
     facet_wrap(.~name, strip.position="left")+
     geom_hline(yintercept=0.8, linetype="dashed",color = "red")+
     labs(x= "Percent of FFPE signature",
          y="",
-         color = "Signature")+
+         color = "Signature",
+         shape="")+
     scale_x_continuous(breaks = scale_x, labels = scale_x)+
     scale_y_continuous(breaks = scale_y, labels = scale_y)+
     theme(strip.text.y = element_text(size = 15),
-          axis.title.x = element_text (size=15))
+          axis.title.x = element_text (size=15))+
+    guides(shape= "none")
   
 
 ggsave("paper_figures/fig3a.png", dpi = 300, width = 180, height = 90, units = "mm")
@@ -598,7 +601,7 @@ ggsave("paper_figures/fig3a.png", dpi = 300, width = 180, height = 90, units = "
 
 Notice the trend is that for increasing percent of FFPE signature, the sensitivity decreases, while the specificity increases.
 
-## A general approach
+## Simulating across all COSMIC signatures
 
 We are interested in assessing the trends in performance metrics across *all* of the signatures in COSMIC. In order to do that we need to create an auxiliary function `calc_dillution_metrics` that generates a tibble with this information for a particular mutational signature. We also create a function `plot_dillution_metrics` that plots this information
 
@@ -643,15 +646,16 @@ calc_dillution_metrics(pct_ffpe, 6) %>%
   plot_dillution_metrics()
 ```
 
-Now we are ready to calculate the dillution metrics across all COSMIC mutational signatures (this takes 20min to run)
+Now we are ready to calculate the dilution metrics across all COSMIC mutational signatures (this takes 20min to run)
 
 ```{r}
 set.seed(123456)
+# sbs_num <- 3
 # Full dataset run
 sim_dillution_tbl <- 1:sbs_num %>%
   map_dfr(~calc_dillution_metrics(pct_ffpe, .x))
 
-rep_ffpe_cos <- rep(ffpe_cosmic_cos_sims, each=length(pct_ffpe)*3)
+rep_ffpe_cos <- rep(ffpe_cosmic_cos_sims[1:sbs_num], each=length(pct_ffpe)*3)
 
 sim_dillution_tbl <-  sim_dillution_tbl %>%
   mutate (ffpe_cos = rep_ffpe_cos)
@@ -675,13 +679,12 @@ sim_dillution_tbl %>%
     labs(x= "Percent of FFPE signature",
          y="")+
     theme(strip.text.y = element_text(size = 15),
-          axis.title.x = element_text (size=15))
-
+          axis.title.x = element_text (size = 15))
 
 ggsave("paper_figures/supp2.png", dpi = 300, width = 180, height = 90, units = "mm")
 ```
 
-We are interested in plotting the performance characteristics across multiple dillution levels so we define a function to do that:
+We are interested in plotting the performance characteristics across multiple dilution levels so we define a function to do that:
 
 ```{r}
 plot_metrics_grid_excerno <- function (tbl, grid, fixed_sbs, metrics, threshold) {
@@ -699,8 +702,8 @@ plot_metrics_grid_excerno <- function (tbl, grid, fixed_sbs, metrics, threshold)
     geom_point()+
     geom_smooth(method = "lm", se=FALSE, formula="y~x")+
     geom_hline(yintercept=threshold, linetype="dashed", color = "red")+
-    geom_point(data = fixed_below, color = "red")+
-    geom_point(data = fixed_above, color = "deepskyblue")+
+    geom_point(data = fixed_below, fill = "red", shape=24, size=3)+
+    geom_point(data = fixed_above, fill = "blue",shape=22, size=3)+
     geom_label_repel(data=fixed_below, aes(label=sbs))+
     geom_label_repel(data=fixed_above, aes(label=sbs))+
     facet_grid(pct_ffpe~metric, labeller=labeller(pct_ffpe=grid.labs))+
@@ -714,7 +717,9 @@ plot_metrics_grid_excerno <- function (tbl, grid, fixed_sbs, metrics, threshold)
 
 
 ```{r}
+
 perf_grid = c(10,30,50,70,90)
+fixed_sbs = c("SBS4", "SBS6")
 plot_metrics_grid_excerno(sim_dillution_tbl, perf_grid, 
                           fixed_sbs, c("Sensitivity","Specificity"),0.8)
 ggsave("paper_figures/fig3b.png", dpi = 300, width = 150, height = 150, units = "mm")
@@ -751,13 +756,15 @@ print_lm_fit <- function (tbl, metric_name, formula) {
 
 ```
 
-Here is the information for each of the performance characteristics:
+Finally we make sure that the ffpe content is on the decimal scale (to be consistent) with the cosine similarity, which is a number from 0 to 1.
+
 
 ```{r}
 sim_dillution_tbl <- sim_dillution_tbl %>%
   mutate(ffpe = pct_ffpe/100)
 ```
 
+Here is the information of the models for sensitivity and specificity
 
 * Sensitivity:
 
@@ -773,108 +780,11 @@ print_lm_coefs(sim_dillution_tbl, "Specificity", "mean~ffpe*ffpe_cos")
 print_lm_fit(sim_dillution_tbl, "Specificity", "mean~ffpe*ffpe_cos")
 ```
 
+# Conclusion
 
-## Another way to look at it (Omit)
+We tested our method across varying levels of FFPE content and across different mutational signatures. We found that the performance characteristics of our method decrease as the cosine similarity against the FFPE signature increases. We also establish that FFPE content increases, our sensitivity decreases and our specificity increases and establish linear models with good fit.
 
-We know that
-
-* Sensitivity is a decreasing function of percent FFPE.
-* Specificity is an increasing function of percent FFPE.
-
-We would like to summarize this characteristics more succintly and establish the relationship with the similarity against the FFPE signature. To do that we will we fix a threshold value in 80% and:
-
-* We will record the maximum ffpe where sensitivity drops below this threshold. We will call this **maximum permissible sensitivy FFPE* 
-* We will record the first percent ffpe where specificity rises above this threshold **minimum permissible specificity FFPE* 
-
-```{r}
-threshold <- 0.8
-
-sens_thres_tbl <- sim_dillution_tbl %>%
-  filter (metric == "Sensitivity") %>%
-  filter(mean>threshold) %>%
-  group_by (sbs) %>%
-  slice (which.max(pct_ffpe)) %>%
-  ungroup() %>%
-  mutate(cos = ffpe_cosmic_cos_sims)
-
-spec_thres_tbl <- sim_dillution_tbl %>%
-  filter (metric == "Specificity" ) %>%
-  filter (mean > threshold) %>%
-  group_by (sbs) %>%
-  slice (which.min(pct_ffpe)) %>%
-  ungroup() %>%
-  mutate(cos = ffpe_cosmic_cos_sims)
-```
-
-Let's look at the distribution of those thresholds
-
-```{r}
-sens_thres_tbl %>%
-  summarize (median = median (mean),
-           IQR = IQR(mean)) %>%
-  mutate_if(is.numeric, format, digits=2) %>%
-  kbl() %>%
-  kable_styling()
-
-spec_thres_tbl %>%
-  summarize (median = median (mean),
-           IQR = IQR(mean)) %>%
-  mutate_if(is.numeric, format, digits=2) %>%
-  kbl() %>%
-  kable_styling()
-
-
-ggplot(sens_thres_tbl, aes(x=pct_ffpe))+
-  geom_histogram(binwidth=5, color="black", fill="lightblue")+
-  labs(x= "Percent of FFPE signature",
-       y="Number")
-    
-
-ggplot(spec_thres_tbl, aes(x=pct_ffpe))+
-  geom_histogram(binwidth=5, color="black", fill="lightblue")+
-  labs(x= "Percent of FFPE signature",
-       y="Number")
-
-```
-
-
-And let's plot the relationship with similarity against the FFPE signature:
-
-```{r}
-sens_thres_tbl %>%
-  ggplot (aes(cos, pct_ffpe)) +
-  geom_point() + 
-  geom_smooth(method="lm", formula = "y~x")+
-  scale_x_continuous(breaks = scale_y, labels = scale_y)+
-  scale_y_continuous(breaks = scale_x, labels = scale_x)+
-  labs(x= "Cosine similarity against FFPE",
-         y="Extreme percent FFPE")
-  
-spec_thres_tbl %>%
-  ggplot (aes(cos, pct_ffpe)) +
-  geom_point() + 
-  geom_smooth(method="lm", formula = "y~x")+
-  scale_x_continuous(breaks = scale_y, labels = scale_y)+
-  scale_y_continuous(breaks = scale_x, labels = scale_x)+
-  labs(x= "Cosine similarity against FFPE",
-         y="Extreme percent FFPE")
-
-```
-
-
-And the linear model metrics for each case:
-
-```{r}
-sens_thres_lm <- lm (pct_ffpe ~ cos, sens_thres_tbl)
-
-spec_thres_lm <- lm (pct_ffpe ~ cos, spec_thres_tbl)
-
-summary(sens_thres_lm)
-summary(spec_thres_lm)
-```
-
-
-
+This analysis was done using the following environment:
 
 ```{r}
 sessionInfo()
