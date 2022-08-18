@@ -1358,6 +1358,316 @@ print_lm_fit(sim_dillution_tbl, "Specificity", "mean~ffpe*ffpe_cos")
 </tbody>
 </table>
 
+# Using real data
+
+We are going use 6 files from this study ...
+
+## Preprocessing
+
+Let's start by listing the 6 VCF files from the `supplied_results` folder:
+
+
+```r
+library(vcfR)
+library(R.utils)
+library(tidyverse)
+vcf_files <- list.files(path="supplied_results",pattern = "vcf", full.names = TRUE)
+```
+
+We will be subsetting each of those files to the variants for which we have confident information in the DNA. We can assure that by requiring `GQ >30` (Genotype Quality) on the exome side
+
+
+
+```r
+for (i in 1:length(vcf_files)) {
+  name <- vcf_files[i]
+  vcf <- read.vcfR(name)
+  filter_name <- str_replace_all(name,"vcf","dna.vcf.gz")
+  out_vcf_name <- str_replace_all(name,"vcf", "dna.vcf")
+
+  gq <-  extract.gt(vcf, element="GQ", as.numeric=TRUE)
+  write.vcf(vcf[which(gq[,1]>30),], file=filter_name)
+  gunzip(filter_name, out_vcf_name)
+}
+```
+
+
+## Running excerno
+
+We ran excerno on the 6 vcf files and use the NMF option
+
+
+
+```r
+library(MutationalPatterns)
+library(BSgenome)
+library(excerno)
+ref_genome <- "BSgenome.Hsapiens.UCSC.hg38"
+library(ref_genome, character.only = TRUE)
+
+vcf_files <- list.files(path="supplied_results",pattern = "dna.vcf", full.names = TRUE)
+excerno_vcf(vcf_files,method="nmf",2)
+```
+
+```
+## [1] "INFO [14:21:05] Creating mutational vectors"
+## [1] "INFO [14:21:18] Performing NMF"
+## [1] "INFO [14:21:36] Generating classification data frames"
+## [1] "INFO [14:21:37] Loading in values to vcf files"
+```
+
+## Calculating performance metrics
+
+We first create a function that allows to collect information on a filtered vcf file
+
+
+```r
+get_metrics <- function (file, sample_name) {
+  vcf <- read.vcfR(file)
+  gt <- extract.gt(vcf)
+
+  # Calculate the errors in the true variants  
+  true_variants <- vcf[which(gt[,1]!="0/0"),]
+  all_true <- as.numeric(dim(true_variants)[1])
+  true_classify <- getFIX(true_variants)[,7]
+  fn <- sum(is.na(true_classify))
+  tp <- all_true -fn
+  
+  # Calculate the errors in the false variants
+  false_variants <- vcf[which(gt[,1]=="0/0"),]
+  all_false <- as.numeric(dim(false_variants)[1])
+  false_classify <- getFIX(false_variants)[,7]
+  tn <- sum(is.na(false_classify))
+  fp <- all_false - tn
+  sum(is.na(true_classify))
+
+  # Calculate sensitivity and speficifty
+  (sens <-  tp /all_true)
+  (spec <- tn /all_false)
+  (ffpe_pct <- all_false/(all_false+all_true))
+  (total <- all_false+all_true)
+  accuracy <- (tp + tn)/(all_true+all_false)
+  
+  tibble(Name=sample_name, `% FFPE`= round(ffpe_pct*100), `# Mutations`=total,
+         Accuracy=accuracy, Specificity=spec, Sensitivity=sens)
+}
+```
+
+Now we list the classified files from `excerno` 
+
+
+```r
+vcf_files <- list.files(pattern = "vcf", full.names = TRUE)
+sample_names = c("MLH1G_10", "MSH6_1","MSH6_2", "MSH6_8", "PMS2_10", "PMS2_9")
+```
+
+And we generate the table with information from the samples
+
+
+```r
+(perf_tbl <- 1:6 %>%
+  map_dfr(~get_metrics(vcf_files[.x], sample_names[.x])) %>%
+  arrange(desc(`% FFPE`)) %>%
+  mutate(`% FFPE`=str_c(`% FFPE`,"%")) %>%
+  mutate(across(c("Accuracy","Sensitivity", "Specificity"),
+                ~format(.x,digits=2, justify="right")))%>%
+  mutate(across(c(`# Mutations`), ~format(.x,big.mark=",", justify="right"))) %>%
+  kbl(caption = "Table 1. Assessment of excerno on real samples", 
+      align=c("l", rep("r",5))) %>%
+  kable_classic(full_width = F, html_font = "Cambria"))
+```
+
+```
+## Scanning file to determine attributes.
+## File attributes:
+##   meta lines: 34
+##   header_line: 35
+##   variant count: 470
+##   column count: 11
+## 
+Meta line 34 read in.
+## All meta lines processed.
+## gt matrix initialized.
+## Character matrix gt created.
+##   Character matrix gt rows: 470
+##   Character matrix gt cols: 11
+##   skip: 0
+##   nrows: 470
+##   row_num: 0
+## 
+Processed variant: 470
+## All variants processed
+## Scanning file to determine attributes.
+## File attributes:
+##   meta lines: 34
+##   header_line: 35
+##   variant count: 358
+##   column count: 11
+## 
+Meta line 34 read in.
+## All meta lines processed.
+## gt matrix initialized.
+## Character matrix gt created.
+##   Character matrix gt rows: 358
+##   Character matrix gt cols: 11
+##   skip: 0
+##   nrows: 358
+##   row_num: 0
+## 
+Processed variant: 358
+## All variants processed
+## Scanning file to determine attributes.
+## File attributes:
+##   meta lines: 34
+##   header_line: 35
+##   variant count: 282
+##   column count: 11
+## 
+Meta line 34 read in.
+## All meta lines processed.
+## gt matrix initialized.
+## Character matrix gt created.
+##   Character matrix gt rows: 282
+##   Character matrix gt cols: 11
+##   skip: 0
+##   nrows: 282
+##   row_num: 0
+## 
+Processed variant: 282
+## All variants processed
+## Scanning file to determine attributes.
+## File attributes:
+##   meta lines: 34
+##   header_line: 35
+##   variant count: 3370
+##   column count: 11
+## 
+Meta line 34 read in.
+## All meta lines processed.
+## gt matrix initialized.
+## Character matrix gt created.
+##   Character matrix gt rows: 3370
+##   Character matrix gt cols: 11
+##   skip: 0
+##   nrows: 3370
+##   row_num: 0
+## 
+Processed variant 1000
+Processed variant 2000
+Processed variant 3000
+Processed variant: 3370
+## All variants processed
+## Scanning file to determine attributes.
+## File attributes:
+##   meta lines: 34
+##   header_line: 35
+##   variant count: 1222
+##   column count: 11
+## 
+Meta line 34 read in.
+## All meta lines processed.
+## gt matrix initialized.
+## Character matrix gt created.
+##   Character matrix gt rows: 1222
+##   Character matrix gt cols: 11
+##   skip: 0
+##   nrows: 1222
+##   row_num: 0
+## 
+Processed variant 1000
+Processed variant: 1222
+## All variants processed
+## Scanning file to determine attributes.
+## File attributes:
+##   meta lines: 34
+##   header_line: 35
+##   variant count: 1751
+##   column count: 11
+## 
+Meta line 34 read in.
+## All meta lines processed.
+## gt matrix initialized.
+## Character matrix gt created.
+##   Character matrix gt rows: 1751
+##   Character matrix gt cols: 11
+##   skip: 0
+##   nrows: 1751
+##   row_num: 0
+## 
+Processed variant 1000
+Processed variant: 1751
+## All variants processed
+```
+
+<table class=" lightable-classic" style="font-family: Cambria; width: auto !important; margin-left: auto; margin-right: auto;">
+<caption>Table 1. Assessment of excerno on real samples</caption>
+ <thead>
+  <tr>
+   <th style="text-align:left;"> Name </th>
+   <th style="text-align:right;"> % FFPE </th>
+   <th style="text-align:right;"> # Mutations </th>
+   <th style="text-align:right;"> Accuracy </th>
+   <th style="text-align:right;"> Specificity </th>
+   <th style="text-align:right;"> Sensitivity </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> MSH6_8 </td>
+   <td style="text-align:right;"> 96% </td>
+   <td style="text-align:right;"> 3,370 </td>
+   <td style="text-align:right;"> 0.96 </td>
+   <td style="text-align:right;"> 1.00 </td>
+   <td style="text-align:right;"> 0.00 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> PMS2_10 </td>
+   <td style="text-align:right;"> 73% </td>
+   <td style="text-align:right;"> 1,222 </td>
+   <td style="text-align:right;"> 0.75 </td>
+   <td style="text-align:right;"> 0.85 </td>
+   <td style="text-align:right;"> 0.47 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> PMS2_9 </td>
+   <td style="text-align:right;"> 32% </td>
+   <td style="text-align:right;"> 1,751 </td>
+   <td style="text-align:right;"> 0.65 </td>
+   <td style="text-align:right;"> 0.38 </td>
+   <td style="text-align:right;"> 0.78 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> MLH1G_10 </td>
+   <td style="text-align:right;"> 26% </td>
+   <td style="text-align:right;"> 470 </td>
+   <td style="text-align:right;"> 0.74 </td>
+   <td style="text-align:right;"> 0.17 </td>
+   <td style="text-align:right;"> 0.94 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> MSH6_2 </td>
+   <td style="text-align:right;"> 8% </td>
+   <td style="text-align:right;"> 282 </td>
+   <td style="text-align:right;"> 0.91 </td>
+   <td style="text-align:right;"> 0.00 </td>
+   <td style="text-align:right;"> 0.99 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> MSH6_1 </td>
+   <td style="text-align:right;"> 7% </td>
+   <td style="text-align:right;"> 358 </td>
+   <td style="text-align:right;"> 0.92 </td>
+   <td style="text-align:right;"> 0.12 </td>
+   <td style="text-align:right;"> 0.98 </td>
+  </tr>
+</tbody>
+</table>
+
+```r
+#save_kable(perf_tbl,"paper_figures/table_1.pdf")
+```
+
+
 # Conclusion
 
 We tested our method across varying levels of FFPE content and across different mutational signatures. We found that the performance characteristics of our method decrease as the cosine similarity against the FFPE signature increases. We also establish that FFPE content increases, our sensitivity decreases and our specificity increases and establish linear models with good fit.
@@ -1388,45 +1698,84 @@ sessionInfo()
 ## [8] methods   base     
 ## 
 ## other attached packages:
-##  [1] plotROC_2.3.0            broom_0.7.10             gridExtra_2.3           
-##  [4] kableExtra_1.3.4         ROCR_1.0-11              ggrepel_0.9.1           
-##  [7] forcats_0.5.1            stringr_1.4.0            dplyr_1.0.8             
-## [10] purrr_0.3.4              readr_2.1.1              tidyr_1.2.0             
-## [13] tibble_3.1.6             ggplot2_3.3.5            tidyverse_1.3.1         
-## [16] MutationalPatterns_3.2.0 GenomicRanges_1.44.0     GenomeInfoDb_1.28.4     
-## [19] IRanges_2.26.0           S4Vectors_0.30.2         NMF_0.23.0              
-## [22] Biobase_2.52.0           BiocGenerics_0.38.0      cluster_2.1.2           
-## [25] rngtools_1.5.2           pkgmaker_0.32.2          registry_0.5-1          
+##  [1] doParallel_1.0.17                 iterators_1.0.14                 
+##  [3] foreach_1.5.2                     BSgenome.Hsapiens.UCSC.hg38_1.4.3
+##  [5] excerno_0.1.0                     BSgenome_1.60.0                  
+##  [7] rtracklayer_1.52.1                Biostrings_2.60.2                
+##  [9] XVector_0.32.0                    R.utils_2.12.0                   
+## [11] R.oo_1.25.0                       R.methodsS3_1.8.2                
+## [13] vcfR_1.13.0                       plotROC_2.3.0                    
+## [15] broom_1.0.0                       gridExtra_2.3                    
+## [17] kableExtra_1.3.4                  ROCR_1.0-11                      
+## [19] ggrepel_0.9.1                     forcats_0.5.1                    
+## [21] stringr_1.4.0                     dplyr_1.0.9                      
+## [23] purrr_0.3.4                       readr_2.1.2                      
+## [25] tidyr_1.2.0                       tibble_3.1.8                     
+## [27] ggplot2_3.3.6                     tidyverse_1.3.2                  
+## [29] MutationalPatterns_3.2.0          GenomicRanges_1.44.0             
+## [31] GenomeInfoDb_1.28.4               IRanges_2.26.0                   
+## [33] S4Vectors_0.30.2                  NMF_0.24.0                       
+## [35] Biobase_2.52.0                    BiocGenerics_0.38.0              
+## [37] cluster_2.1.3                     rngtools_1.5.2                   
+## [39] pkgmaker_0.32.2                   registry_0.5-1                   
 ## 
 ## loaded via a namespace (and not attached):
-##  [1] colorspace_2.0-3       ellipsis_0.3.2         XVector_0.32.0        
-##  [4] fs_1.5.0               rstudioapi_0.13        farver_2.1.0          
-##  [7] bit64_4.0.5            fansi_1.0.3            lubridate_1.8.0       
-## [10] xml2_1.3.3             codetools_0.2-18       splines_4.1.0         
-## [13] doParallel_1.0.16      knitr_1.36             jsonlite_1.8.0        
-## [16] gridBase_0.4-7         dbplyr_2.1.1           compiler_4.1.0        
-## [19] httr_1.4.2             backports_1.4.0        Matrix_1.3-4          
-## [22] assertthat_0.2.1       fastmap_1.1.0          cli_3.2.0             
-## [25] htmltools_0.5.2        tools_4.1.0            gtable_0.3.0          
-## [28] glue_1.6.2             GenomeInfoDbData_1.2.6 reshape2_1.4.4        
-## [31] Rcpp_1.0.8.3           cellranger_1.1.0       jquerylib_0.1.4       
-## [34] vctrs_0.4.1            svglite_2.0.0          nlme_3.1-153          
-## [37] iterators_1.0.13       ggalluvial_0.12.3      xfun_0.23             
-## [40] rvest_1.0.2            lifecycle_1.0.1        zlibbioc_1.38.0       
-## [43] scales_1.2.0           vroom_1.5.7            hms_1.1.1             
-## [46] RColorBrewer_1.1-3     yaml_2.3.5             sass_0.4.0            
-## [49] stringi_1.7.6          highr_0.9              foreach_1.5.1         
-## [52] rlang_1.0.2            pkgconfig_2.0.3        systemfonts_1.0.3     
-## [55] bitops_1.0-7           lattice_0.20-45        pracma_2.3.6          
-## [58] evaluate_0.14          labeling_0.4.2         bit_4.0.4             
-## [61] tidyselect_1.1.2       plyr_1.8.7             magrittr_2.0.1        
-## [64] R6_2.5.1               generics_0.1.2         DBI_1.1.1             
-## [67] pillar_1.7.0           haven_2.4.3            withr_2.5.0           
-## [70] mgcv_1.8-38            RCurl_1.98-1.5         modelr_0.1.8          
-## [73] crayon_1.5.1           utf8_1.2.2             tzdb_0.2.0            
-## [76] rmarkdown_2.11         grid_4.1.0             readxl_1.3.1          
-## [79] reprex_2.0.1           digest_0.6.29          webshot_0.5.2         
-## [82] xtable_1.8-4           munsell_0.5.0          viridisLite_0.4.0     
-## [85] bslib_0.3.1
+##   [1] readxl_1.4.0                backports_1.4.1            
+##   [3] BiocFileCache_2.0.0         systemfonts_1.0.4          
+##   [5] plyr_1.8.7                  splines_4.1.0              
+##   [7] BiocParallel_1.26.2         gridBase_0.4-7             
+##   [9] digest_0.6.29               htmltools_0.5.3            
+##  [11] ggalluvial_0.12.3           fansi_1.0.3                
+##  [13] memoise_2.0.1               magrittr_2.0.3             
+##  [15] googlesheets4_1.0.0         tzdb_0.3.0                 
+##  [17] modelr_0.1.8                matrixStats_0.62.0         
+##  [19] svglite_2.1.0               prettyunits_1.1.1          
+##  [21] colorspace_2.0-3            rappdirs_0.3.3             
+##  [23] blob_1.2.3                  rvest_1.0.2                
+##  [25] haven_2.5.0                 xfun_0.31                  
+##  [27] crayon_1.5.1                RCurl_1.98-1.8             
+##  [29] jsonlite_1.8.0              VariantAnnotation_1.38.0   
+##  [31] ape_5.6-2                   glue_1.6.2                 
+##  [33] gtable_0.3.0                gargle_1.2.0               
+##  [35] zlibbioc_1.38.0             webshot_0.5.3              
+##  [37] DelayedArray_0.18.0         scales_1.2.0               
+##  [39] DBI_1.1.3                   Rcpp_1.0.9                 
+##  [41] progress_1.2.2              viridisLite_0.4.0          
+##  [43] xtable_1.8-4                bit_4.0.4                  
+##  [45] httr_1.4.3                  RColorBrewer_1.1-3         
+##  [47] ellipsis_0.3.2              pkgconfig_2.0.3            
+##  [49] XML_3.99-0.10               sass_0.4.2                 
+##  [51] dbplyr_2.2.1                utf8_1.2.2                 
+##  [53] AnnotationDbi_1.54.1        tidyselect_1.1.2           
+##  [55] rlang_1.0.4                 reshape2_1.4.4             
+##  [57] munsell_0.5.0               cellranger_1.1.0           
+##  [59] tools_4.1.0                 cachem_1.0.6               
+##  [61] cli_3.3.0                   RSQLite_2.2.15             
+##  [63] generics_0.1.3              evaluate_0.16              
+##  [65] fastmap_1.1.0               yaml_2.3.5                 
+##  [67] bit64_4.0.5                 knitr_1.39                 
+##  [69] fs_1.5.2                    KEGGREST_1.32.0            
+##  [71] nlme_3.1-159                pracma_2.3.8               
+##  [73] xml2_1.3.3                  biomaRt_2.48.3             
+##  [75] compiler_4.1.0              rstudioapi_0.13            
+##  [77] filelock_1.0.2              curl_4.3.2                 
+##  [79] png_0.1-7                   reprex_2.0.1               
+##  [81] bslib_0.4.0                 stringi_1.7.6              
+##  [83] highr_0.9                   GenomicFeatures_1.44.2     
+##  [85] memuse_4.2-1                lattice_0.20-45            
+##  [87] Matrix_1.4-1                vegan_2.6-2                
+##  [89] permute_0.9-7               vctrs_0.4.1                
+##  [91] pillar_1.8.0                lifecycle_1.0.1            
+##  [93] jquerylib_0.1.4             bitops_1.0-7               
+##  [95] R6_2.5.1                    BiocIO_1.2.0               
+##  [97] codetools_0.2-18            MASS_7.3-58.1              
+##  [99] assertthat_0.2.1            SummarizedExperiment_1.22.0
+## [101] rjson_0.2.21                withr_2.5.0                
+## [103] pinfsc50_1.2.0              GenomicAlignments_1.28.0   
+## [105] Rsamtools_2.8.0             GenomeInfoDbData_1.2.6     
+## [107] mgcv_1.8-40                 hms_1.1.1                  
+## [109] grid_4.1.0                  rmarkdown_2.14             
+## [111] MatrixGenerics_1.4.3        googledrive_2.0.0          
+## [113] lubridate_1.8.0             restfulr_0.0.15
 ```
 

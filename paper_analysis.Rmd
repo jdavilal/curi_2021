@@ -798,15 +798,16 @@ vcf_files <- list.files(path="supplied_results",pattern = "vcf", full.names = TR
 We will be subsetting each of those files to the variants for which we have confident information in the DNA. We can assure that by requiring `GQ >30` (Genotype Quality) on the exome side
 
 
-```{r}
+```{r eval=FALSE}
 for (i in 1:length(vcf_files)) {
   name <- vcf_files[i]
   vcf <- read.vcfR(name)
-  filter_name <- str_replace_all(name,"vcf","high.vcf.gz")
+  filter_name <- str_replace_all(name,"vcf","dna.vcf.gz")
+  out_vcf_name <- str_replace_all(name,"vcf", "dna.vcf")
 
   gq <-  extract.gt(vcf, element="GQ", as.numeric=TRUE)
   write.vcf(vcf[which(gq[,1]>30),], file=filter_name)
-  gunzip(filter_name)
+  gunzip(filter_name, out_vcf_name)
 }
 ```
 
@@ -823,7 +824,7 @@ library(excerno)
 ref_genome <- "BSgenome.Hsapiens.UCSC.hg38"
 library(ref_genome, character.only = TRUE)
 
-vcf_files <- list.files(path="supplied_results",pattern = "high.vcf", full.names = TRUE)
+vcf_files <- list.files(path="supplied_results",pattern = "dna.vcf", full.names = TRUE)
 excerno_vcf(vcf_files,method="nmf",2)
 ```
 
@@ -856,9 +857,10 @@ get_metrics <- function (file, sample_name) {
   (spec <- tn /all_false)
   (ffpe_pct <- all_false/(all_false+all_true))
   (total <- all_false+all_true)
+  accuracy <- (tp + tn)/(all_true+all_false)
   
-  tibble(name=sample_name, sens=sens, spec=spec, 
-         ffpe.pct = ffpe_pct*100, total=total)
+  tibble(Name=sample_name, `% FFPE`= round(ffpe_pct*100), `# Mutations`=total,
+         Accuracy=accuracy, Specificity=spec, Sensitivity=sens)
 }
 ```
 
@@ -866,21 +868,26 @@ Now we list the classified files from `excerno`
 
 ```{r}
 vcf_files <- list.files(pattern = "vcf", full.names = TRUE)
-sample_names = c("MLHG10_10", "MSH6_1","MSH6_2", "MSH6_8", "PMS2_10", "PMS2_09")
+sample_names = c("MLH1G_10", "MSH6_1","MSH6_2", "MSH6_8", "PMS2_10", "PMS2_9")
 ```
 
-And we generate the table with informaton from the samples
+And we generate the table with information from the samples
 
 ```{r}
-1:6 %>%
+(perf_tbl <- 1:6 %>%
   map_dfr(~get_metrics(vcf_files[.x], sample_names[.x])) %>%
-  arrange(desc(ffpe.pct)) %>%
-  mutate_if(is.numeric, format, digits=1)%>%
-  kbl() %>%
-  kable_styling()
+  arrange(desc(`% FFPE`)) %>%
+  mutate(`% FFPE`=str_c(`% FFPE`,"%")) %>%
+  mutate(across(c("Accuracy","Sensitivity", "Specificity"),
+                ~format(.x,digits=2, justify="right")))%>%
+  mutate(across(c(`# Mutations`), ~format(.x,big.mark=",", justify="right"))) %>%
+  kbl(caption = "Table 1. Assessment of excerno on real samples", 
+      align=c("l", rep("r",5))) %>%
+  kable_classic(full_width = F, html_font = "Cambria"))
+
+#save_kable(perf_tbl,"paper_figures/table_1.pdf")
 
 ```
-
 
 
 # Conclusion
